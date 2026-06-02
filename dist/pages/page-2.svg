@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1100" viewBox="0 0 800 1100" role="img" aria-label="Activity 1">
+  <rect width="800" height="1100" fill="#eef7ff"/>
+  <rect x="54" y="54" width="692" height="992" rx="36" fill="#ffffff" stroke="#457b9d" stroke-width="10"/>
+  <text x="400" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="#1d3557">Activity 1</text>
+  <text x="400" y="240" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" fill="#52616b">Trace the route</text>
+  <path d="M170 760 C230 520 340 650 395 450 S570 280 630 640" fill="none" stroke="#457b9d" stroke-width="12" stroke-dasharray="18 20" stroke-linecap="round"/>
+  <circle cx="170" cy="760" r="38" fill="#e63946"/>
+  <circle cx="630" cy="640" r="38" fill="#2a9d8f"/>
+</svg>

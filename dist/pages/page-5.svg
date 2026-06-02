@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1100" viewBox="0 0 800 1100" role="img" aria-label="Activity 4">
+  <rect width="800" height="1100" fill="#effaf4"/>
+  <rect x="54" y="54" width="692" height="992" rx="36" fill="#ffffff" stroke="#2a9d8f" stroke-width="10"/>
+  <text x="400" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="#174d44">Activity 4</text>
+  <text x="400" y="240" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" fill="#52616b">Count the stars</text>
+  <g fill="none" stroke="#2a9d8f" stroke-width="12" stroke-linejoin="round">
+    <polygon points="250,410 275,480 350,480 290,525 315,600 250,555 185,600 210,525 150,480 225,480"/>
+    <polygon points="550,390 575,460 650,460 590,505 615,580 550,535 485,580 510,505 450,460 525,460"/>
+    <polygon points="400,650 425,720 500,720 440,765 465,840 400,795 335,840 360,765 300,720 375,720"/>
+  </g>
+</svg>
