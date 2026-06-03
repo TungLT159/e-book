@@ -23,9 +23,9 @@ export default function App() {
 
   if (view === "home") {
     return (
-      <main className="app-shell">
+      <div className="app-shell">
         <BookListPage books={pdfBooks} onSelectBook={handleSelectBook} />
-      </main>
+      </div>
     );
   }
 
