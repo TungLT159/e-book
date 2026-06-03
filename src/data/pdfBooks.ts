@@ -4,7 +4,7 @@ export type PdfBookConfig = {
   pdfPath: string;
   audioPath: string;
   timeline: AudioTimelineItem[];
-  coverColors: [string, string];
+  coverColors?: [string, string];
 };
 
 export type AudioTimelineItem = {
@@ -42,17 +42,5 @@ export const pdfBooks: PdfBookConfig[] = [
       { page: 8, start: 56, end: 64 },
     ],
     coverColors: ["#e8825c", "#c94b4b"],
-  },
-  {
-    id: "ngu-ngon-nhe-be-cun",
-    title: "Ngủ ngon nhé bé cún",
-    pdfPath: "/books/ngungonnhebecun13715_1312202316.pdf",
-    audioPath: "/books/ngungonnhebecun13715_1312202316.mp3",
-    timeline: [
-      { page: 1, start: 0, end: 8 },
-      { page: 2, start: 8, end: 16 },
-      { page: 3, start: 16, end: 24 },
-    ],
-    coverColors: ["#667eea", "#764ba2"],
   },
 ];
