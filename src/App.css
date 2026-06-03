@@ -946,12 +946,15 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .interactive-reader__nav,
   .interactive-reader__menu-toggle,
+  .interactive-reader__menu,
   .interactive-reader__menu button,
   .interactive-reader__thumbnails,
   .interactive-reader__thumbnails-header button,
   .interactive-reader__thumbnail,
   .interactive-reader__book,
-  .book-card {
+  .book-card,
+  .book-selector__item,
+  .book-selector__spinner {
     animation: none;
     transition: none;
   }
@@ -969,6 +972,10 @@ button {
   .interactive-reader__menu button:hover:not(:disabled),
   .interactive-reader__thumbnails-header button:hover,
   .interactive-reader__thumbnail:hover {
+    transform: none;
+  }
+
+  .book-selector__item:hover:not(:disabled) {
     transform: none;
   }
 }
