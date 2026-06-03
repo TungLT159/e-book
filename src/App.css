@@ -39,6 +39,10 @@ button {
     linear-gradient(135deg, #fff8ed 0%, #edf4f7 100%);
 }
 
+.app-shell:has(.book-list-page) {
+  overflow: auto;
+}
+
 .hero {
   max-width: 960px;
   margin: 0 auto 24px;
@@ -816,6 +820,7 @@ button {
 .book-card__title {
   display: -webkit-box;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: #172026;
   font-size: 1rem;
   font-weight: 700;
@@ -949,5 +954,10 @@ button {
   .book-card {
     animation: none;
     transition: none;
+  }
+
+  .book-card:hover,
+  .book-card:active {
+    transform: none;
   }
 }
