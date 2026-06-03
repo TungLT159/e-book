@@ -960,4 +960,15 @@ button {
   .book-card:active {
     transform: none;
   }
+
+  .interactive-reader__nav:hover:not(:disabled) {
+    transform: translateY(-50%);
+  }
+
+  .interactive-reader__menu-toggle:hover,
+  .interactive-reader__menu button:hover:not(:disabled),
+  .interactive-reader__thumbnails-header button:hover,
+  .interactive-reader__thumbnail:hover {
+    transform: none;
+  }
 }
