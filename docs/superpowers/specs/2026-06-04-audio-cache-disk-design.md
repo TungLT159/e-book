@@ -46,17 +46,27 @@ Recommended structure:
 
 The book key should be derived from the resolved PDF path and title using a filesystem-safe encoding. The chunk key should incorporate the chunk index and chunk fingerprint.
 
+## Cache Retention
+
+Audio cache files are persistent on disk but should be pruned by time.
+
+- Keep cache entries while they are still recent enough to be useful for reopen/replay.
+- Remove stale cache entries when they exceed the configured retention window.
+- Pruning should run opportunistically during narration startup or cache lookup so it does not require a separate maintenance job.
+
+The retention window should be a fixed, documented duration in code and should be long enough to cover normal reopen sessions while still preventing indefinite cache growth.
+
 ## Runtime Flow
 
 When narration starts:
 
 1. Build the chunk list from extracted page text.
-2. For the current chunk, check whether the cache file exists and is valid.
+2. For the current chunk, check whether the cache file exists, is valid, and is not expired.
 3. If the file exists, play it immediately.
-4. If the file is missing or invalid, call Edge TTS in the Electron main process, write the MP3 file to disk, then play it.
+4. If the file is missing, invalid, or expired, call Edge TTS in the Electron main process, write the MP3 file to disk, then play it.
 5. Advance through chunks sequentially until narration completes or the user stops playback.
 
-The renderer should continue to control playback state and chunk advancement, while the Electron main process owns synthesis and disk writes.
+The renderer should continue to control playback state and chunk advancement, while the Electron main process owns synthesis, disk writes, and cache pruning.
 
 ## Invalidation and Reuse
 
@@ -74,7 +84,7 @@ This keeps later opens fast while preventing stale audio from being played again
 
 ## Error Handling
 
-- If synthesis fails for a missing cache file, narration stops and surfaces the original Edge TTS error.
+- If synthesis fails for a missing or expired cache file, narration stops and surfaces the original Edge TTS error.
 - If an existing cache file is corrupt or unreadable, delete it and synthesize again once.
 - If repeated synthesis fails, narration stops and shows the failure message.
 - If the cache directory cannot be created or written, narration stops and reports the filesystem error.
@@ -90,6 +100,7 @@ Tests should verify:
 - Changing voice or speech rate creates a different cache key.
 - Changing the source text invalidates the cached MP3.
 - Corrupt cache files are rejected and rebuilt.
+- Expired cache files are pruned and re-synthesized.
 
 ## Out Of Scope
 
