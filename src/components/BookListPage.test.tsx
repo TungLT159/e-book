@@ -1,24 +1,44 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { PdfBookConfig } from '../data/pdfBooks';
+import type { PdfBookState } from '../hooks/usePdfBookLoader';
 import { BookListPage } from './BookListPage';
 
-const mockBooks: PdfBookConfig[] = [
+const mockBooks: PdfBookState[] = [
   {
-    id: 'book-1',
-    title: 'Sách thứ nhất',
-    pdfPath: '/books/book1.pdf',
-    audioPath: '/books/book1.mp3',
-    timeline: [{ page: 1, start: 0, end: 10 }],
-    coverColors: ['#e8825c', '#c94b4b'],
+    config: {
+      id: 'book-1',
+      title: 'Sách thứ nhất',
+      pdfPath: '/books/book1.pdf',
+      thumbnail: '/books/book1.png',
+      pageCount: 3,
+      ageRange: '12+',
+      subject: 'Test',
+      keywords: [],
+      favorite: false,
+      coverColors: ['#e8825c', '#c94b4b'],
+    },
+    pages: [
+      { id: 1, title: 'Page 1', image: 'blob:1', thumbnail: 'blob:1' },
+      { id: 2, title: 'Page 2', image: 'blob:2', thumbnail: 'blob:2' },
+      { id: 3, title: 'Page 3', image: 'blob:3', thumbnail: 'blob:3' },
+    ],
+    loaded: true,
   },
   {
-    id: 'book-2',
-    title: 'Ngủ ngon nhé',
-    pdfPath: '/books/book2.pdf',
-    audioPath: '',
-    timeline: [{ page: 1, start: 0, end: 5 }],
+    config: {
+      id: 'book-2',
+      title: 'Ngủ ngon nhé',
+      pdfPath: '/books/book2.pdf',
+      thumbnail: '/books/book2.png',
+      pageCount: 1,
+      ageRange: '12+',
+      subject: 'Test',
+      keywords: [],
+      favorite: true,
+    },
+    pages: [{ id: 1, title: 'Page 1', image: 'blob:4', thumbnail: 'blob:4' }],
+    loaded: true,
   },
 ];
 
@@ -42,10 +62,11 @@ describe('BookListPage', () => {
     expect(onSelectBook).toHaveBeenCalledWith('book-2');
   });
 
-  it('renders page count for books with timeline entries', () => {
+  it('renders page count for loaded books', () => {
     render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
 
-    expect(screen.getAllByText('1 trang')).toHaveLength(2);
+    expect(screen.getByText('3 trang')).toBeInTheDocument();
+    expect(screen.getByText('1 trang')).toBeInTheDocument();
   });
 
   it('renders empty state when no books are available', () => {
@@ -54,11 +75,15 @@ describe('BookListPage', () => {
     expect(screen.getByText('Chưa có sách nào.')).toBeInTheDocument();
   });
 
-  it('renders cover initials', () => {
-    render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
+  it('renders thumbnail covers and falls back to initials on error', () => {
+    const { container } = render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
+
+    const coverImage = container.querySelector('.book-card__cover-image') as HTMLImageElement;
+    expect(coverImage).toHaveAttribute('src', '/books/book1.png');
+
+    fireEvent.error(coverImage);
 
     expect(screen.getByText('S')).toBeInTheDocument();
-    expect(screen.getByText('N')).toBeInTheDocument();
   });
 
   it('renders a book without coverColors using the fallback path', () => {
@@ -67,14 +92,20 @@ describe('BookListPage', () => {
     expect(screen.getByRole('button', { name: 'Đọc sách: Ngủ ngon nhé' })).toBeInTheDocument();
   });
 
-  it('renders empty timeline text when a book has no pages', () => {
+  it('renders the configured page count even without rendered pages', () => {
     render(
       <BookListPage
-        books={[{ ...mockBooks[0], id: 'empty-book', timeline: [] }]}
+        books={[{ ...mockBooks[0], config: { ...mockBooks[0].config, id: 'empty-book' }, pages: [], loaded: true }]}
         onSelectBook={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('Không có trang')).toBeInTheDocument();
+    expect(screen.getByText('3 trang')).toBeInTheDocument();
+  });
+
+  it('shows loading copy before any books are available', () => {
+    render(<BookListPage books={[]} loading onSelectBook={vi.fn()} />);
+
+    expect(screen.getByText('Đang tải thư viện sách...')).toBeInTheDocument();
   });
 });

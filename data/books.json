@@ -1,0 +1,35 @@
+[
+  {
+    "id": "book_001",
+    "ten_sach": "Tuyển tập truyện ngắn hay Việt Nam",
+    "so_trang": 270,
+    "duong_dan_file": "/books/book.pdf",
+    "thumbnail": "/thumbnails/tuyentaptruyennganhayvn.png",
+    "do_tuoi": "12+",
+    "chu_de": "Truyện ngắn, Văn học Việt Nam",
+    "tu_khoa": ["phiêu lưu", "khám phá", "lòng đất", "cổ điển"],
+    "is_favorite": true
+  },
+  {
+    "id": "book_002",
+    "ten_sach": "Ngủ ngon nhe bé cún",
+    "so_trang": 12,
+    "duong_dan_file": "/books/ngungonnhebecun13715_1312202316.pdf",
+    "thumbnail": "/thumbnails/ngungonnhebecun.png",
+    "do_tuoi": "12+",
+    "chu_de": "Truyện ngắn, Văn học Việt Nam",
+    "tu_khoa": ["phiêu lưu", "khám phá", "lòng đất", "cổ điển"],
+    "is_favorite": true
+  },
+  {
+    "id": "book_003",
+    "ten_sach": "Sóc không hề tham lam",
+    "so_trang": 20,
+    "duong_dan_file": "/books/sockhonghethamlam827b1_1312202316.pdf",
+    "thumbnail": "/thumbnails/sockhonghetthamlam.png",
+    "do_tuoi": "12+",
+    "chu_de": "Truyện ngắn, Văn học Việt Nam",
+    "tu_khoa": ["phiêu lưu", "khám phá", "lòng đất", "cổ điển"],
+    "is_favorite": true
+  }
+]

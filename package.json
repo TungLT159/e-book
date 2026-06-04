@@ -3,14 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5173",
     "build": "tsc -b && vite build",
+    "electron:dev": "concurrently -k \"vite --port 5173\" \"wait-on http://127.0.0.1:5173 && electron . --dev\"",
+    "electron:app": "npm run build && electron .",
+    "electron:prod": "electron .",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "edge-tts": "^1.0.1",
     "lucide-react": "^1.17.0",
     "pdfjs-dist": "^5.4.296",
     "react": "latest",
@@ -27,7 +32,10 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "concurrently": "latest",
+    "electron": "latest",
     "jsdom": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wait-on": "latest"
   }
 }

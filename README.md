@@ -9,6 +9,18 @@ npm install
 npm run dev
 ```
 
+## Electron Desktop
+
+```bash
+npm install
+npm run electron:app
+```
+
+```bash
+npm run build
+npm run electron:prod
+```
+
 ## Build
 
 ```bash
