@@ -31,13 +31,15 @@ pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
 const PDF_PAGE_WIDTH = 660;
 const FLIPPING_TIME = 650;
 const PAGE_FLIP_SOUND_PATH = "/Audio/effects/page-flip.mp3";
-const NARRATION_VOICE = "vi-VN-HoaiMyNeural";
+const NARRATION_VOICE = "vi-VN-NamMinhNeural";
 const DEFAULT_NARRATION_RATE = 0;
+const NARRATION_PRELOAD_LOOKAHEAD = 1;
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 1.35;
 const ZOOM_STEP = 0.1;
 const FULLSCREEN_ZOOM_MULTIPLIER = 1.18;
 const AUTO_FLIP_INTERVAL = 3200;
+const NARRATION_PAGE_PAUSE_MS = 1500;
 
   type PageFlipApi = {
   flipNext: () => void;
@@ -74,6 +76,14 @@ type NarrationVoiceOption = {
   label: string;
 };
 
+export type PdfTextContentItem = {
+  str?: string;
+  transform?: number[];
+  width?: number;
+  height?: number;
+  hasEOL?: boolean;
+};
+
 export { resolvePublicAssetPath };
 
 export function sanitizeNarrationText(text: string) {
@@ -98,7 +108,131 @@ export function sanitizeNarrationText(text: string) {
     sanitized += text[index];
   }
 
-  return sanitized.replace(/\s+/g, " ").trim();
+  return sanitized
+    .normalize("NFC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeLeadingPageNumber(text: string) {
+  return text.replace(/^\d+\s+(?=\p{L})/u, "").replace(/^\d+(?=\p{L})/u, "");
+}
+
+export function textContentItemsToNarrationText(items: PdfTextContentItem[]) {
+  let text = "";
+
+  const appendSpace = () => {
+    if (text && !/\s$/.test(text)) {
+      text += " ";
+    }
+  };
+
+  for (const item of items) {
+    const itemText = item.str || "";
+
+    text += itemText;
+
+    if (item.hasEOL) {
+      appendSpace();
+    }
+  }
+
+  return removeLeadingPageNumber(sanitizeNarrationText(text));
+}
+
+type NarrationAudioChunk = {
+  startPage: number;
+  endPage: number;
+  text: string;
+};
+
+const SENTENCE_BOUNDARY_PATTERN = /[.!?](?:["')\]]+)?\s*$/;
+
+function hasParagraphBoundary(text: string) {
+  return /\n\s*\n\s*$/.test(text);
+}
+
+function hasSentenceBoundary(text: string) {
+  return SENTENCE_BOUNDARY_PATTERN.test(text.trimEnd());
+}
+
+export function buildNarrationAudioChunks(pageTexts: string[]): NarrationAudioChunk[] {
+  if (pageTexts.length === 0) {
+    return [];
+  }
+
+  const chunks: NarrationAudioChunk[] = [];
+  for (let startIndex = 0; startIndex < pageTexts.length; ) {
+    const maxEndIndex = Math.min(startIndex + 2, pageTexts.length - 1);
+    let chosenEndIndex = maxEndIndex;
+
+    for (let index = maxEndIndex; index >= startIndex; index -= 1) {
+      if (hasParagraphBoundary(pageTexts[index] || "")) {
+        chosenEndIndex = index;
+        break;
+      }
+    }
+
+    if (chosenEndIndex === maxEndIndex) {
+      for (let index = maxEndIndex; index >= startIndex; index -= 1) {
+        if (hasSentenceBoundary(pageTexts[index] || "")) {
+          chosenEndIndex = index;
+          break;
+        }
+      }
+    }
+
+    const chunkPages = pageTexts.slice(startIndex, chosenEndIndex + 1);
+
+    chunks.push({
+      startPage: startIndex + 1,
+      endPage: chosenEndIndex + 1,
+      text: chunkPages.join("\n\n"),
+    });
+
+    startIndex = chosenEndIndex + 1;
+  }
+
+  return chunks;
+}
+
+export function normalizeNarrationAudioData(audioData: unknown) {
+  if (audioData instanceof ArrayBuffer) {
+    return audioData;
+  }
+
+  if (ArrayBuffer.isView(audioData)) {
+    const view = audioData as ArrayBufferView;
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
+  if (
+    audioData &&
+    typeof audioData === "object" &&
+    "data" in audioData &&
+    Array.isArray((audioData as { data?: unknown }).data)
+  ) {
+    return new Uint8Array((audioData as { data: number[] }).data).buffer;
+  }
+
+  if (audioData && typeof audioData === "object") {
+    const bytes = Object.entries(audioData)
+      .filter(([key, value]) => /^\d+$/.test(key) && typeof value === "number")
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, value]) => value as number);
+
+    if (bytes.length > 0) {
+      return new Uint8Array(bytes).buffer;
+    }
+  }
+
+  throw new Error("Dữ liệu âm thanh Edge TTS không hợp lệ.");
 }
 
 const FlipbookStage = memo(function FlipbookStage({
@@ -183,12 +317,15 @@ export function InteractivePdfFlipbook({
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isTtsSettingsOpen, setIsTtsSettingsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isAutoFlipEnabled, setIsAutoFlipEnabled] = useState(false);
   const [isThumbnailPanelOpen, setIsThumbnailPanelOpen] = useState(false);
   const [isNarrationEnabled, setIsNarrationEnabled] = useState(false);
+  const [narrationPageIndex, setNarrationPageIndex] = useState(0);
   const [isNarrationLoading, setIsNarrationLoading] = useState(false);
+  const [isNarrationSynthesizing, setIsNarrationSynthesizing] = useState(false);
   const [isVoiceLoading, setIsVoiceLoading] = useState(false);
   const [voiceOptions, setVoiceOptions] = useState<NarrationVoiceOption[]>([
     { value: NARRATION_VOICE, label: "Hoài My (vi-VN)" },
@@ -205,6 +342,10 @@ export function InteractivePdfFlipbook({
   const flipSettledTimeoutRef = useRef<number | null>(null);
   const narrationBlobUrlRef = useRef<string | null>(null);
   const narrationRequestIdRef = useRef(0);
+  const narrationPreloadRequestIdRef = useRef(0);
+  const narrationPagePauseTimeoutRef = useRef<number | null>(null);
+  const narrationOperationIdRef = useRef(0);
+  const extractedTextDebugFilePromiseRef = useRef<Promise<string> | null>(null);
 
   const currentPage = currentPageIndex + 1;
   const pages = Array.from({ length: numPages }, (_, index) => index + 1);
@@ -218,6 +359,15 @@ export function InteractivePdfFlipbook({
     return `${rate > 0 ? "+" : ""}${rate}%`;
   }, []);
 
+  const isPageVisibleInCurrentSpread = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex === currentPageIndex) return true;
+
+      return currentPageIndex > 0 && pageIndex === currentPageIndex + 1;
+    },
+    [currentPageIndex],
+  );
+
   const playPageFlipSound = useCallback(() => {
     const sound = pageFlipAudioRef.current;
     if (!sound) return;
@@ -228,6 +378,12 @@ export function InteractivePdfFlipbook({
 
   const stopNarration = useCallback(() => {
     narrationRequestIdRef.current += 1;
+    narrationPreloadRequestIdRef.current += 1;
+
+    if (narrationPagePauseTimeoutRef.current !== null) {
+      window.clearTimeout(narrationPagePauseTimeoutRef.current);
+      narrationPagePauseTimeoutRef.current = null;
+    }
 
     const audio = narrationAudioRef.current;
     if (audio) {
@@ -240,7 +396,64 @@ export function InteractivePdfFlipbook({
       URL.revokeObjectURL(narrationBlobUrlRef.current);
       narrationBlobUrlRef.current = null;
     }
+
+    setIsNarrationSynthesizing(false);
   }, []);
+
+  const preloadNextNarrationPage = useCallback(
+    (
+      pageIndex: number,
+      narrationOptions: { voice: string; rate?: string },
+      narrationRequestId: number,
+    ) => {
+      const nextPageIndex = pageIndex + NARRATION_PRELOAD_LOOKAHEAD;
+      const prepareEdgeTtsAudioCacheFile = window.audioCache?.prepareEdgeTtsAudioCacheFile;
+      const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
+
+      if (nextPageIndex >= numPages || !prepareEdgeTtsAudioCacheFile || !readExtractedTextPage) {
+        return;
+      }
+
+      const preloadRequestId = ++narrationPreloadRequestIdRef.current;
+
+      void (async () => {
+        try {
+          const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
+          if (
+            preloadRequestId !== narrationPreloadRequestIdRef.current ||
+            narrationRequestId !== narrationRequestIdRef.current ||
+            !debugTextFilePath?.trim()
+          ) {
+            return;
+          }
+
+          const fileText = await readExtractedTextPage(debugTextFilePath, nextPageIndex + 1);
+          if (
+            preloadRequestId !== narrationPreloadRequestIdRef.current ||
+            narrationRequestId !== narrationRequestIdRef.current
+          ) {
+            return;
+          }
+
+          const chunkText = sanitizeNarrationText(fileText);
+          if (!chunkText) {
+            return;
+          }
+
+          await prepareEdgeTtsAudioCacheFile({
+            bookKey: title,
+            voice: narrationOptions.voice,
+            rate: narrationOptions.rate || '',
+            chunkIndex: nextPageIndex,
+            chunkText,
+          });
+        } catch {
+          // Preload is best-effort; current narration should continue unaffected.
+        }
+      })();
+    },
+    [numPages, title],
+  );
 
   const extractTextFromPdf = useCallback(async () => {
     if (!numPages) {
@@ -253,15 +466,72 @@ export function InteractivePdfFlipbook({
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" ");
+      const pageText = textContentItemsToNarrationText(
+        textContent.items as PdfTextContentItem[],
+      );
 
-      texts.push(sanitizeNarrationText(pageText));
+      texts.push(pageText);
     }
 
     return texts;
   }, [numPages, resolvedPdfPath]);
+
+  const toggleNarration = useCallback(() => {
+    setNarrationError(null);
+
+    if (isNarrationEnabled) {
+      setIsNarrationEnabled(false);
+      return;
+    }
+
+    void (async () => {
+      const operationId = ++narrationOperationIdRef.current;
+      setIsNarrationLoading(true);
+
+      try {
+        const texts = pageNarrationTexts.length > 0
+          ? pageNarrationTexts
+          : await extractTextFromPdf();
+        if (operationId !== narrationOperationIdRef.current) return;
+
+        const writeExtractedText = window.debugTools?.writeExtractedText;
+
+        if (!writeExtractedText) {
+          throw new Error("Không thể tạo file văn bản đã định dạng.");
+        }
+
+        if (pageNarrationTexts.length === 0) {
+          setPageNarrationTexts(texts);
+        }
+
+        const filePromise = writeExtractedText({ title, pdfPath, pages: texts });
+        extractedTextDebugFilePromiseRef.current = filePromise;
+        const filePath = await filePromise;
+        if (operationId !== narrationOperationIdRef.current) return;
+
+        if (!filePath?.trim()) {
+          throw new Error("Không thể tạo file văn bản đã định dạng.");
+        }
+
+        setNarrationPageIndex(currentPageIndex);
+        setIsNarrationEnabled(true);
+      } catch (error) {
+        if (operationId !== narrationOperationIdRef.current) return;
+
+        extractedTextDebugFilePromiseRef.current = null;
+        setNarrationError(
+          error instanceof Error
+            ? error.message
+            : "Không thể chuẩn bị file văn bản để đọc.",
+        );
+        setIsNarrationEnabled(false);
+      } finally {
+        if (operationId === narrationOperationIdRef.current) {
+          setIsNarrationLoading(false);
+        }
+      }
+    })();
+  }, [currentPageIndex, extractTextFromPdf, isNarrationEnabled, pageNarrationTexts, pdfPath, title]);
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
@@ -344,6 +614,14 @@ export function InteractivePdfFlipbook({
     setIsMenuOpen(false);
   }, []);
 
+  const toggleTtsSettings = useCallback(() => {
+    setIsTtsSettingsOpen((prev) => !prev);
+  }, []);
+
+  const closeTtsSettings = useCallback(() => {
+    setIsTtsSettingsOpen(false);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (flipSettledTimeoutRef.current !== null) {
@@ -353,12 +631,27 @@ export function InteractivePdfFlipbook({
   }, []);
 
   useEffect(() => {
+    if (flipSettledTimeoutRef.current !== null) {
+      window.clearTimeout(flipSettledTimeoutRef.current);
+      flipSettledTimeoutRef.current = null;
+    }
+
+    lastSyncedPageRef.current = 1;
+    setCurrentPageIndex(0);
+
+    return () => {
+      narrationOperationIdRef.current += 1;
+    };
+  }, [pdfPath, title]);
+
+  useEffect(() => {
     let cancelled = false;
 
     setPageNarrationTexts([]);
     setNarrationError(null);
     setIsNarrationLoading(Boolean(numPages));
     setIsNarrationEnabled(false);
+    extractedTextDebugFilePromiseRef.current = null;
     stopNarration();
 
     if (!numPages) {
@@ -409,6 +702,12 @@ export function InteractivePdfFlipbook({
         }
 
         const mappedVoices = voices
+          .filter(
+            (voice: EdgeTtsVoice) =>
+              voice.Locale === "vi-VN" ||
+              voice.ShortName?.startsWith("vi-VN-") ||
+              voice.Name?.startsWith("vi-VN-"),
+          )
           .map((voice: EdgeTtsVoice) => {
             const value = voice.ShortName || voice.Name;
             if (!value) return null;
@@ -494,7 +793,6 @@ export function InteractivePdfFlipbook({
       return undefined;
     }
 
-    const narrationText = sanitizeNarrationText(pageNarrationTexts[currentPageIndex] || "");
     const audio = narrationAudioRef.current;
     if (!audio) {
       return undefined;
@@ -519,12 +817,60 @@ export function InteractivePdfFlipbook({
         return;
       }
 
-      if (currentPageIndex >= numPages - 1) {
+      if (narrationPageIndex >= numPages - 1) {
         setIsNarrationEnabled(false);
+        setIsNarrationLoading(true);
+        setPageNarrationTexts([]);
+
+        const debugTextFilePromise = extractedTextDebugFilePromiseRef.current;
+        extractedTextDebugFilePromiseRef.current = null;
+        const operationId = ++narrationOperationIdRef.current;
+
+        void (async () => {
+          try {
+            const debugTextFilePath = await debugTextFilePromise;
+            const emptyExtractedTextFile = window.debugTools?.emptyExtractedTextFile;
+
+            if (!debugTextFilePath?.trim() || !emptyExtractedTextFile) {
+              throw new Error("Không thể làm trống file văn bản đã định dạng.");
+            }
+
+            await emptyExtractedTextFile(debugTextFilePath);
+          } catch (error) {
+            if (operationId !== narrationOperationIdRef.current) return;
+
+            setNarrationError(
+              error instanceof Error
+                ? error.message
+                : "Không thể làm trống file văn bản đã định dạng.",
+            );
+          } finally {
+            if (operationId === narrationOperationIdRef.current) {
+              setIsNarrationLoading(false);
+            }
+          }
+        })();
         return;
       }
 
-      flipToNextPage();
+      const nextNarrationPageIndex = narrationPageIndex + 1;
+      if (narrationPagePauseTimeoutRef.current !== null) {
+        window.clearTimeout(narrationPagePauseTimeoutRef.current);
+      }
+
+      narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
+        narrationPagePauseTimeoutRef.current = null;
+
+        if (cancelled || requestId !== narrationRequestIdRef.current) {
+          return;
+        }
+
+        setNarrationPageIndex(nextNarrationPageIndex);
+
+        if (!isPageVisibleInCurrentSpread(nextNarrationPageIndex)) {
+          flipToNextPage();
+        }
+      }, NARRATION_PAGE_PAUSE_MS);
     };
 
     const handleError = () => {
@@ -542,6 +888,16 @@ export function InteractivePdfFlipbook({
 
     void (async () => {
       try {
+        const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
+        const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
+
+        if (!debugTextFilePath?.trim() || !readExtractedTextPage) {
+          throw new Error("Không thể đọc file văn bản đã định dạng.");
+        }
+
+        const fileText = await readExtractedTextPage(debugTextFilePath, narrationPageIndex + 1);
+        const narrationText = sanitizeNarrationText(fileText);
+
         if (!narrationText) {
           handleEnded();
           return;
@@ -559,16 +915,43 @@ export function InteractivePdfFlipbook({
             : {}),
         };
 
+        const audioCache = window.audioCache;
+        const cacheResult = audioCache
+          ? await audioCache.getOrCreateEdgeTtsAudioCacheFile({
+              bookKey: title,
+              voice: narrationOptions.voice,
+              rate: narrationOptions.rate || '',
+              chunkIndex: narrationPageIndex,
+              chunkText: narrationText,
+            })
+          : null;
+
+        if (cacheResult?.cacheHit && cacheResult.audioUrl) {
+          if (cancelled || requestId !== narrationRequestIdRef.current) {
+            return;
+          }
+
+          if (narrationBlobUrlRef.current) {
+            URL.revokeObjectURL(narrationBlobUrlRef.current);
+            narrationBlobUrlRef.current = null;
+          }
+
+          audio.src = cacheResult.audioUrl;
+          audio.currentTime = 0;
+          audio.load();
+          await audio.play();
+          preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
+          return;
+        }
+
+        setIsNarrationSynthesizing(true);
         const audioData = await edgeTts.synthesize(narrationText, narrationOptions);
 
         if (cancelled || requestId !== narrationRequestIdRef.current) {
           return;
         }
 
-        const blobSource =
-          audioData instanceof Uint8Array
-            ? new Uint8Array(audioData).buffer
-            : audioData;
+        const blobSource = normalizeNarrationAudioData(audioData);
         const blob = new Blob([blobSource], { type: "audio/mpeg" });
         const url = URL.createObjectURL(blob);
         if (narrationBlobUrlRef.current) {
@@ -578,7 +961,9 @@ export function InteractivePdfFlipbook({
 
         audio.src = url;
         audio.currentTime = 0;
+        audio.load();
         await audio.play();
+        preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
       } catch (error) {
         if (cancelled || requestId !== narrationRequestIdRef.current) {
           return;
@@ -590,21 +975,31 @@ export function InteractivePdfFlipbook({
             : "Không thể đọc văn bản bằng Edge TTS.",
         );
         setIsNarrationEnabled(false);
+      } finally {
+        if (!cancelled && requestId === narrationRequestIdRef.current) {
+          setIsNarrationSynthesizing(false);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      if (narrationPagePauseTimeoutRef.current !== null) {
+        window.clearTimeout(narrationPagePauseTimeoutRef.current);
+        narrationPagePauseTimeoutRef.current = null;
+      }
       cleanupAudio();
+      setIsNarrationSynthesizing(false);
     };
   }, [
-    currentPageIndex,
     flipToNextPage,
+    isPageVisibleInCurrentSpread,
     isNarrationEnabled,
     isNarrationLoading,
     narrationError,
+    narrationPageIndex,
     numPages,
-    pageNarrationTexts,
+    preloadNextNarrationPage,
     selectedVoice,
     speechRate,
     formatNarrationRate,
@@ -629,6 +1024,47 @@ export function InteractivePdfFlipbook({
 
     return () => window.clearInterval(intervalId);
   }, [currentPageIndex, flipToNextPage, isAutoFlipEnabled, numPages]);
+
+  // Handle ESC key to close TTS settings
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeTtsSettings();
+      }
+    };
+
+    if (isTtsSettingsOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isTtsSettingsOpen, closeTtsSettings]);
+
+  // Handle click-outside to close TTS settings
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const settingsButton = readerRef.current?.querySelector(
+        'button[aria-label="Cài đặt TTS"]'
+      );
+      const submenu = readerRef.current?.querySelector(
+        ".interactive-reader__tts-submenu"
+      );
+
+      if (
+        submenu &&
+        !submenu.contains(target) &&
+        settingsButton &&
+        !settingsButton.contains(target)
+      ) {
+        closeTtsSettings();
+      }
+    };
+
+    if (isTtsSettingsOpen) {
+      window.addEventListener("mousedown", handleClickOutside);
+      return () => window.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isTtsSettingsOpen, closeTtsSettings]);
 
   return (
     <section
@@ -737,18 +1173,33 @@ export function InteractivePdfFlipbook({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setNarrationError(null);
-                setIsNarrationEnabled((isEnabled) => !isEnabled);
-              }}
+              className="interactive-reader__narration-button"
+              onClick={toggleNarration}
               disabled={!numPages || isNarrationLoading}
-              aria-label={isNarrationEnabled ? "Dừng đọc" : "Đọc tự động"}
-              title={isNarrationEnabled ? "Dừng đọc" : "Đọc tự động"}
+              aria-label={
+                isNarrationSynthesizing
+                  ? "Đang tạo giọng đọc"
+                  : isNarrationEnabled
+                    ? "Dừng đọc"
+                    : "Đọc tự động"
+              }
+              title={
+                isNarrationSynthesizing
+                  ? "Đang tạo giọng đọc"
+                  : isNarrationEnabled
+                    ? "Dừng đọc"
+                    : "Đọc tự động"
+              }
             >
               {isNarrationEnabled ? (
                 <Pause aria-hidden="true" />
               ) : (
                 <Play aria-hidden="true" />
+              )}
+              {isNarrationSynthesizing && (
+                <span className="interactive-reader__button-status">
+                  Đang tạo giọng đọc...
+                </span>
               )}
             </button>
             <div className="interactive-reader__tts-settings">
@@ -885,6 +1336,7 @@ export function InteractivePdfFlipbook({
       {numPages > 0 && (
           <div className="interactive-reader__book-shell">
             <FlipbookStage
+              key={resolvedPdfPath}
               numPages={numPages}
               bookRef={bookRef}
               onFlip={handleFlip}
