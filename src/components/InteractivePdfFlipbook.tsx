@@ -1115,6 +1115,214 @@ export function InteractivePdfFlipbook({
         </button>
       </header>
 
+      {/* Menu Panel (Dropdown) */}
+      <nav
+        className="interactive-reader__menu-panel"
+        role="navigation"
+        aria-label="Menu điều khiển trình đọc"
+        data-state={isMenuOpen ? "open" : "closed"}
+      >
+        {isMenuOpen && (
+          <div className="interactive-reader__menu-sections">
+            {/* Section 1: Navigation */}
+            <div className="menu-section menu-section--navigation">
+              <h3 className="menu-section__title">Navigation</h3>
+              <button
+                type="button"
+                onClick={flipToPreviousPage}
+                disabled={currentPageIndex <= 0}
+                aria-label="Trang trước"
+                title="Trang trước"
+              >
+                <ChevronLeft aria-hidden="true" />
+                Trang trước
+              </button>
+              <button
+                type="button"
+                onClick={flipToNextPage}
+                disabled={!numPages || currentPageIndex >= numPages - 1}
+                aria-label="Trang tiếp theo"
+                title="Trang tiếp theo"
+              >
+                <ChevronRight aria-hidden="true" />
+                Trang tiếp theo
+              </button>
+            </div>
+
+            {/* Section 2: View Controls */}
+            <div className="menu-section menu-section--view">
+              <h3 className="menu-section__title">View</h3>
+              <button
+                type="button"
+                onClick={() => changeZoom(1)}
+                disabled={zoom >= MAX_ZOOM}
+                aria-label="Phóng to"
+                title="Phóng to"
+              >
+                <ZoomIn aria-hidden="true" />
+                Phóng to
+              </button>
+              <button
+                type="button"
+                onClick={() => changeZoom(-1)}
+                disabled={zoom <= MIN_ZOOM}
+                aria-label="Thu nhỏ"
+                title="Thu nhỏ"
+              >
+                <ZoomOut aria-hidden="true" />
+                Thu nhỏ
+              </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+                title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+              >
+                {isFullscreen ? <Minimize aria-hidden="true" /> : <Maximize aria-hidden="true" />}
+                {isFullscreen ? "Thoát" : "Toàn màn hình"}
+              </button>
+              <button
+                type="button"
+                onClick={toggleThumbnails}
+                aria-label="Hình thu nhỏ"
+                title="Hình thu nhỏ"
+              >
+                <Images aria-hidden="true" />
+                Hình thu nhỏ
+              </button>
+            </div>
+
+            {/* Section 3: Audio & Tools */}
+            <div className="menu-section menu-section--audio">
+              <h3 className="menu-section__title">Audio & Tools</h3>
+              <button
+                type="button"
+                onClick={toggleNarration}
+                disabled={!numPages || isNarrationLoading}
+                aria-label={
+                  isNarrationSynthesizing
+                    ? "Đang tạo giọng đọc"
+                    : isNarrationEnabled
+                      ? "Dừng đọc"
+                      : "Đọc tự động"
+                }
+                title={
+                  isNarrationSynthesizing
+                    ? "Đang tạo giọng đọc"
+                    : isNarrationEnabled
+                      ? "Dừng đọc"
+                      : "Đọc tự động"
+                }
+              >
+                {isNarrationEnabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                {isNarrationEnabled ? "Dừng đọc" : "Đọc tự động"}
+              </button>
+
+              {/* TTS Settings with Submenu */}
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={toggleTtsSettings}
+                  aria-label="Cài đặt TTS"
+                  title="Cài đặt TTS"
+                  aria-expanded={isTtsSettingsOpen}
+                >
+                  <Settings aria-hidden="true" />
+                  Cài đặt TTS
+                </button>
+
+                {isTtsSettingsOpen && (
+                  <div
+                    className="interactive-reader__tts-submenu"
+                    aria-label="Cài đặt TTS"
+                  >
+                    <div className="interactive-reader__tts-submenu-header">
+                      <h4>Cài đặt TTS</h4>
+                      <button
+                        type="button"
+                        className="interactive-reader__tts-submenu-close"
+                        onClick={closeTtsSettings}
+                        aria-label="Đóng"
+                        title="Đóng"
+                      >
+                        <X aria-hidden="true" />
+                      </button>
+                    </div>
+
+                    <label className="interactive-reader__tts-field">
+                      <span>Giọng đọc</span>
+                      <select
+                        value={selectedVoice}
+                        onChange={(event) => setSelectedVoice(event.target.value)}
+                        disabled={isVoiceLoading || voiceOptions.length === 0}
+                        aria-label="Giọng đọc"
+                      >
+                        {voiceOptions.map((voice) => (
+                          <option key={voice.value} value={voice.value}>
+                            {voice.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="interactive-reader__tts-field">
+                      <span>Tốc độ đọc</span>
+                      <input
+                        type="range"
+                        min={-50}
+                        max={50}
+                        step={5}
+                        value={speechRate}
+                        onChange={(event) => setSpeechRate(Number(event.target.value))}
+                        aria-label="Tốc độ đọc"
+                      />
+                      <output aria-live="polite">
+                        {speechRate === 0
+                          ? "Bình thường"
+                          : `${speechRate > 0 ? "+" : ""}${speechRate}%`}
+                      </output>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAutoFlipEnabled((prev) => !prev)}
+                disabled={!numPages || currentPageIndex >= numPages - 1}
+                aria-label={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
+                title={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
+              >
+                {isAutoFlipEnabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                {isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => flipToPage(0)}
+                disabled={!numPages || currentPageIndex <= 0}
+                aria-label="Trang đầu"
+                title="Trang đầu"
+              >
+                <SkipBack aria-hidden="true" />
+                Trang đầu
+              </button>
+
+              <button
+                type="button"
+                onClick={() => flipToPage(numPages - 1)}
+                disabled={!numPages || currentPageIndex >= numPages - 1}
+                aria-label="Trang cuối"
+                title="Trang cuối"
+              >
+                <SkipForward aria-hidden="true" />
+                Trang cuối
+              </button>
+            </div>
+          </div>
+        )}
+      </nav>
+
       {narrationError && (
         <p className="interactive-reader__message interactive-reader__message--error">
           {narrationError}
