@@ -317,6 +317,7 @@ export function InteractivePdfFlipbook({
   const [numPages, setNumPages] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isTtsSettingsOpen, setIsTtsSettingsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -607,6 +608,16 @@ export function InteractivePdfFlipbook({
     setIsThumbnailPanelOpen((isOpen) => !isOpen);
   }, []);
 
+  const toggleMenu = useCallback(() => {
+    setIsMenuOpen((prev) => {
+      if (prev) {
+        // Closing menu - also close TTS submenu
+        setIsTtsSettingsOpen(false);
+      }
+      return !prev;
+    });
+  }, []);
+
   const toggleTtsSettings = useCallback(() => {
     setIsTtsSettingsOpen((prev) => !prev);
   }, []);
@@ -773,13 +784,18 @@ export function InteractivePdfFlipbook({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
 
+      if (isTtsSettingsOpen) {
+        closeTtsSettings();
+      } else if (isMenuOpen) {
+        toggleMenu();
+      }
+      
       setIsThumbnailPanelOpen(false);
-      closeTtsSettings();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isMenuOpen, isTtsSettingsOpen, toggleMenu, closeTtsSettings]);
 
   useEffect(() => {
     if (!isNarrationEnabled || !numPages || isNarrationLoading || narrationError) {
