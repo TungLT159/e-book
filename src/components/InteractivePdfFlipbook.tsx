@@ -1101,6 +1101,18 @@ export function InteractivePdfFlipbook({
         <p className="interactive-reader__status">
           Trang {currentPage} / {numPages || "-"}
         </p>
+        
+        {/* NEW: Hamburger Menu Toggle */}
+        <button
+          type="button"
+          className="interactive-reader__menu-toggle"
+          onClick={toggleMenu}
+          aria-expanded={isMenuOpen}
+          aria-label={isMenuOpen ? "Đóng menu điều khiển" : "Mở menu điều khiển"}
+          title={isMenuOpen ? "Đóng menu điều khiển" : "Mở menu điều khiển"}
+        >
+          {isMenuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+        </button>
       </header>
 
       {narrationError && (
