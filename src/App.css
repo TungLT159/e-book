@@ -424,7 +424,7 @@ button {
 
 .interactive-reader__nav,
 .interactive-reader__menu-toggle,
-.interactive-reader__menu button {
+.interactive-reader__menu-panel button {
   display: inline-grid;
   place-items: center;
   border: 0;
@@ -461,7 +461,7 @@ button {
 }
 
 .interactive-reader__nav svg,
-.interactive-reader__menu button svg,
+.interactive-reader__menu-panel button svg,
 .interactive-reader__thumbnails-header button svg {
   width: 1.25rem;
   height: 1.25rem;
@@ -540,8 +540,9 @@ button {
 }
 
 .interactive-reader__menu-panel[data-state="open"] {
-  max-height: 200px;
+  max-height: min(60vh, 680px);
   opacity: 1;
+  overflow: auto;
   padding: 16px 20px;
 }
 
@@ -611,6 +612,42 @@ button {
 }
 
 /* ───── Reader: TTS Settings ───── */
+
+.interactive-reader__tts-submenu {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-sm));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm));
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.interactive-reader__tts-submenu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.interactive-reader__tts-submenu-header h4 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.menu-section button.interactive-reader__tts-submenu-close {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  justify-content: center;
+  padding: 0;
+}
 
 .interactive-reader__tts-settings {
   grid-column: 1 / -1;
@@ -1253,8 +1290,8 @@ button {
   .interactive-reader__nav,
   .interactive-reader__library-back,
   .interactive-reader__menu-toggle,
-  .interactive-reader__menu,
-  .interactive-reader__menu button,
+  .interactive-reader__menu-panel,
+  .interactive-reader__menu-panel button,
   .interactive-reader__thumbnails,
   .interactive-reader__thumbnails-header button,
   .interactive-reader__thumbnail,
@@ -1277,7 +1314,7 @@ button {
 
   .interactive-reader__menu-toggle:hover,
   .interactive-reader__library-back:hover,
-  .interactive-reader__menu button:hover:not(:disabled),
+  .interactive-reader__menu-panel button:hover:not(:disabled),
   .interactive-reader__thumbnails-header button:hover,
   .interactive-reader__thumbnail:hover {
     transform: none;
