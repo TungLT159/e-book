@@ -420,6 +420,7 @@ button {
 /* ───── Reader: Shared button base ───── */
 
 .interactive-reader__nav,
+.interactive-reader__menu-toggle,
 .interactive-reader__menu button {
   display: inline-grid;
   place-items: center;
@@ -498,9 +499,6 @@ button {
   -webkit-backdrop-filter: blur(var(--glass-blur-sm));
   border: var(--glass-border);
   color: var(--color-text);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
   transition: all 200ms ease;
   box-shadow: var(--glass-shadow);
 }
@@ -607,74 +605,6 @@ button {
   height: 1.2rem;
   stroke-width: 2;
   flex-shrink: 0;
-}
-
-/* ───── Reader: Menu panel ───── */
-
-.interactive-reader__menu-shell {
-  position: absolute;
-  z-index: 8;
-  top: 60px;
-  right: 28px;
-}
-
-.interactive-reader__menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(42px, 1fr));
-  gap: 10px;
-  padding: 16px;
-  width: min(380px, calc(100vw - 40px));
-  border-radius: var(--glass-radius);
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(calc(var(--glass-blur) * 1.5));
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.5));
-  border: var(--glass-border);
-  box-shadow: var(--glass-shadow-lg);
-  transform-origin: top right;
-  animation: reader-menu-in 170ms ease-out;
-}
-
-.interactive-reader__menu button {
-  width: 42px;
-  height: 42px;
-  min-height: 42px;
-  padding: 0;
-  border-radius: var(--glass-radius-sm);
-  border: var(--glass-border);
-  color: var(--color-text);
-  background: var(--glass-bg);
-  transition: all 200ms ease;
-}
-
-.interactive-reader__menu button:hover:not(:disabled) {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
-}
-
-.interactive-reader__menu button:disabled {
-  cursor: not-allowed;
-  opacity: 0.34;
-}
-
-.interactive-reader__menu .interactive-reader__narration-button {
-  grid-column: 1 / -1;
-  display: inline-flex;
-  width: auto;
-  min-width: 42px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  height: 42px;
-}
-
-.interactive-reader__button-status {
-  font-size: 0.8rem;
-  white-space: nowrap;
 }
 
 /* ───── Reader: TTS Settings ───── */
