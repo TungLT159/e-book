@@ -5,7 +5,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InteractivePdfFlipbook, resolvePublicAssetPath } from './InteractivePdfFlipbook';
+import {
+  buildNarrationAudioChunks,
+  InteractivePdfFlipbook,
+  resolvePublicAssetPath,
+} from './InteractivePdfFlipbook';
 
 const flip = vi.fn();
 const flipNext = vi.fn();
@@ -14,6 +18,8 @@ const play = vi.fn(() => Promise.resolve());
 const receivedDocumentProps = vi.fn();
 const receivedFlipBookProps = vi.fn();
 const receivedPageProps = vi.fn();
+const pageFlipMounted = vi.fn();
+const pageFlipUnmounted = vi.fn();
 const getDocument = vi.hoisted(() =>
   vi.fn(() => ({
     promise: Promise.resolve({
@@ -42,6 +48,10 @@ vi.mock('react-pageflip', () => ({
   default: React.forwardRef<PageFlipRef, { children: React.ReactNode; onFlip?: (event: { data: number }) => void }>(
     ({ children, onFlip, ...props }, ref) => {
       receivedFlipBookProps(props);
+      React.useEffect(() => {
+        pageFlipMounted();
+        return () => pageFlipUnmounted();
+      }, []);
       React.useImperativeHandle(ref, () => ({
         pageFlip: () => ({
           flip: (pageIndex: number) => {
@@ -122,6 +132,53 @@ const timeline = [
   { page: 3, start: 16, end: 24 },
 ];
 
+describe('buildNarrationAudioChunks', () => {
+  it('prefers paragraph boundaries over sentence boundaries while keeping chunks within three pages', () => {
+    const chunks = buildNarrationAudioChunks([
+      'Page 1 opening thought.',
+      'Page 2 ends a sentence.',
+      'Page 3 ends a paragraph.\n\n',
+      'Page 4 setup.',
+      'Page 5 final sentence.',
+    ]);
+
+    expect(chunks).toEqual([
+      {
+        startPage: 1,
+        endPage: 3,
+        text: 'Page 1 opening thought.\n\nPage 2 ends a sentence.\n\nPage 3 ends a paragraph.\n\n',
+      },
+      {
+        startPage: 4,
+        endPage: 5,
+        text: 'Page 4 setup.\n\nPage 5 final sentence.',
+      },
+    ]);
+  });
+
+  it('splits a four-page narration into a three-page chunk and a final single-page chunk', () => {
+    const chunks = buildNarrationAudioChunks([
+      'Page 1 opening text.',
+      'Page 2 continues the thought.',
+      'Page 3 closes the paragraph.\n\n',
+      'Page 4 appendix text.',
+    ]);
+
+    expect(chunks).toEqual([
+      {
+        startPage: 1,
+        endPage: 3,
+        text: 'Page 1 opening text.\n\nPage 2 continues the thought.\n\nPage 3 closes the paragraph.\n\n',
+      },
+      {
+        startPage: 4,
+        endPage: 4,
+        text: 'Page 4 appendix text.',
+      },
+    ]);
+  });
+});
+
 const originalRequestFullscreenDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   'requestFullscreen',
@@ -149,6 +206,8 @@ describe('InteractivePdfFlipbook', () => {
     receivedDocumentProps.mockClear();
     receivedFlipBookProps.mockClear();
     receivedPageProps.mockClear();
+    pageFlipMounted.mockClear();
+    pageFlipUnmounted.mockClear();
   });
 
   afterEach(() => {
@@ -277,7 +336,55 @@ describe('InteractivePdfFlipbook', () => {
     expect(screen.getByText('Trang 3 / 3')).toBeInTheDocument();
   });
 
-  it('offers side navigation and first/last page jumps', async () => {
+  it('remounts the live flipbook at its cover for a different PDF with the same page count', async () => {
+    const { rerender } = render(
+      <InteractivePdfFlipbook title="Old book" pdfPath="/books/old.pdf" />,
+    );
+
+    await screen.findByText('PDF page 1');
+    act(() => {
+      fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    });
+
+    await act(async () => {
+      rerender(<InteractivePdfFlipbook title="New book" pdfPath="/books/new.pdf" />);
+    });
+
+    await waitFor(() => expect(pageFlipMounted).toHaveBeenCalledTimes(2));
+    expect(pageFlipUnmounted).toHaveBeenCalledTimes(1);
+    expect(receivedFlipBookProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startPage: 0 }),
+    );
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+  });
+
+  it('ignores pending flip settle timeouts after rerendering to a different PDF', async () => {
+    const { rerender } = render(
+      <InteractivePdfFlipbook title="Old book" pdfPath="/books/old.pdf" />,
+    );
+
+    await screen.findByText('PDF page 1');
+    vi.useFakeTimers();
+
+    act(() => {
+      fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    });
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+
+    await act(async () => {
+      rerender(<InteractivePdfFlipbook title="New book" pdfPath="/books/new.pdf" />);
+    });
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(650);
+    });
+
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+    expect(screen.getByText(/Trang \d+ \/ 3/)).toHaveTextContent('Trang 1 / 3');
+  });
+
+   it('offers side navigation and first/last page jumps', async () => {
     render(
       <InteractivePdfFlipbook
         title="Demo book"
@@ -291,7 +398,18 @@ describe('InteractivePdfFlipbook', () => {
 
     vi.useFakeTimers();
 
-    fireEvent.click(screen.getByRole('button', { name: /trang tiếp theo/i }));
+    // Use side navigation buttons (with interactive-reader__nav class)
+    const nextNavButton = screen.getByRole('button', { name: /trang tiếp theo/i });
+    const within_button = nextNavButton.classList.contains('interactive-reader__nav--next');
+    if (!within_button) {
+      // If not the nav button, find the one in nav
+      const navButtons = Array.from(screen.getAllByRole('button', { name: /trang tiếp theo/i }));
+      const navButton = navButtons.find(btn => btn.classList.contains('interactive-reader__nav--next'));
+      if (navButton) fireEvent.click(navButton);
+    } else {
+      fireEvent.click(nextNavButton);
+    }
+    
     expect(flipNext).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
 
@@ -306,14 +424,16 @@ describe('InteractivePdfFlipbook', () => {
       vi.advanceTimersByTime(650);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /trang trước/i }));
+    // Use side navigation button for previous
+    const prevNavButtons = Array.from(screen.getAllByRole('button', { name: /trang trước/i }));
+    const prevButton = prevNavButtons.find(btn => btn.classList.contains('interactive-reader__nav--prev'));
+    if (prevButton) fireEvent.click(prevButton);
     expect(flipPrev).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    // Sidebar buttons are now directly accessible (unique names in sidebar)
     fireEvent.click(screen.getByRole('button', { name: /trang đầu/i }));
     expect(flip).toHaveBeenCalledWith(0);
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /trang cuối/i }));
     expect(flip).toHaveBeenCalledWith(2);
   });
@@ -330,11 +450,15 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    expect(screen.getByRole('button', { name: /trang đầu/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /trang cuối/i })).not.toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: /đóng menu điều khiển/i }));
+    // Sidebar buttons are now directly accessible, no need for menu toggle
+    // These are in the sidebar menu section and should be unique
+    const firstPageButtons = Array.from(screen.getAllByRole('button', { name: /trang đầu/i }));
+    const firstButton = firstPageButtons[firstPageButtons.length - 1]; // Get the one in sidebar
+    expect(firstButton).toBeDisabled();
+    
+    const lastPageButtons = Array.from(screen.getAllByRole('button', { name: /trang cuối/i }));
+    const lastButton = lastPageButtons[lastPageButtons.length - 1]; // Get the one in sidebar
+    expect(lastButton).not.toBeDisabled();
 
     vi.useFakeTimers();
     fireEvent.click(screen.getByText('Mock user flip'));
@@ -361,7 +485,7 @@ describe('InteractivePdfFlipbook', () => {
 
     const reader = screen.getByLabelText('Trình đọc tương tác cho Demo book');
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    // Sidebar buttons are now directly accessible
     fireEvent.click(screen.getByRole('button', { name: /phóng to/i }));
     expect(reader).toHaveStyle({ '--interactive-reader-zoom': '1.1' });
 
@@ -399,7 +523,7 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    // Sidebar buttons are now directly accessible
     fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
 
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
@@ -428,7 +552,7 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    // Sidebar buttons are now directly accessible
     fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
     await act(async () => undefined);
 
@@ -563,7 +687,9 @@ describe('InteractivePdfFlipbook', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => {
+      fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    });
     act(() => {
       vi.advanceTimersByTime(350);
     });
@@ -589,6 +715,122 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
     expect(screen.queryByLabelText('Âm thanh kể chuyện cho Demo book')).toBeNull();
+  });
+
+  it('passes different cache keys when the narration voice changes', async () => {
+    const synthesize = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
+    const getVoices = vi.fn(async () => [
+      { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
+    ]);
+    const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ voice }: { voice: string }) => ({
+      audioPath: `C:\\Temp\\flipbook-cache\\${voice}.mp3`,
+      cacheHit: false,
+    }));
+    const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
+    const readExtractedTextPage = vi.fn(async (_filePath: string, pageNumber: number) =>
+      pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
+    );
+
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.edgeTts = { synthesize, getVoices };
+    window.debugTools = { writeExtractedText, readExtractedTextPage };
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookKey: 'Demo book',
+          voice: 'vi-VN-NamMinhNeural',
+          rate: '',
+          chunkIndex: 0,
+          chunkText: 'Nội dung đọc từ file text trang một',
+        }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('Giọng đọc'), {
+      target: { value: 'vi-VN-HoaiMyNeural' },
+    });
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          bookKey: 'Demo book',
+          voice: 'vi-VN-HoaiMyNeural',
+          rate: '',
+          chunkIndex: 0,
+          chunkText: 'Nội dung đọc từ file text trang một',
+        }),
+      ),
+    );
+
+    expect(getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(0)?.[0].voice).not.toBe(
+      getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(-1)?.[0].voice,
+    );
+  });
+
+  it('passes different cache keys when the narration speech rate changes', async () => {
+    const synthesize = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
+    const getVoices = vi.fn(async () => [
+      { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
+    ]);
+    const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ rate }: { rate: string }) => ({
+      audioPath: `C:\\Temp\\flipbook-cache\\${rate || 'default'}.mp3`,
+      cacheHit: false,
+    }));
+    const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
+    const readExtractedTextPage = vi.fn(async (_filePath: string, pageNumber: number) =>
+      pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
+    );
+
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.edgeTts = { synthesize, getVoices };
+    window.debugTools = { writeExtractedText, readExtractedTextPage };
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookKey: 'Demo book',
+          voice: 'vi-VN-NamMinhNeural',
+          rate: '',
+          chunkIndex: 0,
+          chunkText: 'Nội dung đọc từ file text trang một',
+        }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('Tốc độ đọc'), { target: { value: '25' } });
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          bookKey: 'Demo book',
+          voice: 'vi-VN-NamMinhNeural',
+          rate: '+25%',
+          chunkIndex: 0,
+          chunkText: 'Nội dung đọc từ file text trang một',
+        }),
+      ),
+    );
+
+    expect(getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(0)?.[0].rate).not.toBe(
+      getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(-1)?.[0].rate,
+    );
   });
 
   it('resolves public asset paths against the Vite base URL', () => {
