@@ -319,7 +319,10 @@ button {
   display: grid;
   height: calc(100vh - 32px);
   height: calc(100dvh - 32px);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  /* Row 1: Header (auto)
+     Row 2: Menu panel (auto, can be 0)
+     Row 3: Content (1fr) */
   max-width: 1320px;
   margin: 0 auto;
   padding: 16px;
