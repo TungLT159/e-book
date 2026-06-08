@@ -317,7 +317,6 @@ export function InteractivePdfFlipbook({
   const [numPages, setNumPages] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isTtsSettingsOpen, setIsTtsSettingsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -563,7 +562,6 @@ export function InteractivePdfFlipbook({
       const targetPageIndex = Math.min(Math.max(pageIndex, 0), numPages - 1);
       bookRef.current?.pageFlip().flip(targetPageIndex);
       setVisiblePage(targetPageIndex);
-      setIsMenuOpen(false);
       setIsThumbnailPanelOpen(false);
     },
     [numPages, setVisiblePage],
@@ -605,14 +603,8 @@ export function InteractivePdfFlipbook({
     void requestFullscreen?.catch(() => undefined);
   }, []);
 
-  const toggleReaderMenu = useCallback(() => {
-    setIsThumbnailPanelOpen(false);
-    setIsMenuOpen((isOpen) => !isOpen);
-  }, []);
-
   const toggleThumbnails = useCallback(() => {
     setIsThumbnailPanelOpen((isOpen) => !isOpen);
-    setIsMenuOpen(false);
   }, []);
 
   const toggleTtsSettings = useCallback(() => {
@@ -777,12 +769,12 @@ export function InteractivePdfFlipbook({
     return () => window.cancelAnimationFrame(frameId);
   }, [isFullscreen, readerZoom]);
 
-  useEffect(() => {
+   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
 
-      setIsMenuOpen(false);
       setIsThumbnailPanelOpen(false);
+      closeTtsSettings();
     };
 
     window.addEventListener("keydown", handleKeyDown);
