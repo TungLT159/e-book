@@ -310,6 +310,179 @@ describe('InteractivePdfFlipbook', () => {
     expect(onBackToLibrary).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the reader menu collapsed by default', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /phóng to/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the reader menu inside the reader container before fullscreen', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    const menuToggle = screen.getByRole('button', { name: /mở menu điều khiển/i });
+
+    fireEvent.click(menuToggle);
+
+    const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
+    const reader = screen.getByLabelText('Trình đọc tương tác cho Demo book');
+
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(menuPanel.closest('.interactive-reader')).toBe(reader);
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+  });
+
+  it('moves the reader menu into fullscreen content so it remains visible', async () => {
+    let fullscreenElement: Element | null = null;
+    const requestFullscreen = vi.fn(() => {
+      fullscreenElement = document.querySelector('.interactive-reader');
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /đóng menu điều khiển/i })).toBeInTheDocument();
+    });
+
+    const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
+    expect(menuPanel.closest('.interactive-reader')).toBe(
+      screen.getByLabelText('Trình đọc tương tác cho Demo book'),
+    );
+  });
+
+  it('keeps the menu and page shell inside one fullscreen reader shell', async () => {
+    let fullscreenElement: Element | null = null;
+    const requestFullscreen = vi.fn(() => {
+      fullscreenElement = document.querySelector('.interactive-reader');
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /đóng menu điều khiển/i })).toBeInTheDocument();
+    });
+
+    const shell = screen.getByLabelText('Trình đọc tương tác cho Demo book').querySelector(
+      '.interactive-reader__shell',
+    );
+
+    expect(shell).toBeTruthy();
+    expect(shell).toContainElement(screen.getByLabelText('Menu điều khiển trình đọc'));
+    expect(shell).toContainElement(screen.getByLabelText('Bảng hình thu nhỏ PDF').closest('.interactive-reader__thumbnails') ?? screen.getByLabelText('Bảng hình thu nhỏ PDF'));
+  });
+
+  it('closes the reader menu with Escape', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    const menuToggle = screen.getByRole('button', { name: /mở menu điều khiển/i });
+
+    fireEvent.click(menuToggle);
+
+    expect(screen.getByLabelText('Menu điều khiển trình đọc')).toBeVisible();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
+  });
+
+  it('closes the reader menu when clicking outside', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    const menuToggle = screen.getByRole('button', { name: /mở menu điều khiển/i });
+
+    fireEvent.click(menuToggle);
+
+    expect(screen.getByLabelText('Menu điều khiển trình đọc')).toBeVisible();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
+  });
+
   it('waits until the flip animation settles before updating the visible page status', async () => {
     render(
       <InteractivePdfFlipbook
@@ -527,6 +700,56 @@ describe('InteractivePdfFlipbook', () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
   });
 
+  it('expands the flipbook stage when entering fullscreen', async () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1200 });
+
+    let fullscreenElement: Element | null = null;
+    const requestFullscreen = vi.fn(() => {
+      fullscreenElement = document.querySelector('.interactive-reader');
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
+
+    await waitFor(() => {
+      const lastProps = receivedFlipBookProps.mock.calls.at(-1)?.[0] as {
+        maxWidth?: number;
+        maxHeight?: number;
+      };
+
+      expect(lastProps.maxWidth).toBeGreaterThan(1200);
+      expect(lastProps.maxHeight).toBeGreaterThan(900);
+    });
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+  });
+
   it('keeps fullscreen controls unchanged when fullscreen request fails', async () => {
     const requestFullscreen = vi.fn(() => Promise.reject(new Error('Denied')));
 
@@ -640,7 +863,7 @@ describe('InteractivePdfFlipbook', () => {
     const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
     expect(menuPanel).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(menuPanel).toHaveAttribute('data-state', 'closed');
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /hình thu nhỏ/i }));

@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, RefObject } from "react";
 import {
   ChevronLeft,
@@ -30,6 +37,11 @@ import "react-pdf/dist/Page/TextLayer.css";
 pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
 
 const PDF_PAGE_WIDTH = 660;
+const PDF_PAGE_HEIGHT = 720;
+const FULLSCREEN_PDF_PAGE_WIDTH = 980;
+const FULLSCREEN_PDF_PAGE_HEIGHT = 840;
+const FULLSCREEN_PDF_MAX_WIDTH = 1200;
+const FULLSCREEN_PDF_MAX_HEIGHT = 960;
 const FLIPPING_TIME = 650;
 const PAGE_FLIP_SOUND_PATH = "/Audio/effects/page-flip.mp3";
 const NARRATION_VOICE = "vi-VN-NamMinhNeural";
@@ -42,7 +54,7 @@ const FULLSCREEN_ZOOM_MULTIPLIER = 1.18;
 const AUTO_FLIP_INTERVAL = 3200;
 const NARRATION_PAGE_PAUSE_MS = 1500;
 
-  type PageFlipApi = {
+type PageFlipApi = {
   flipNext: () => void;
   flipPrev: () => void;
   flip: (pageIndex: number) => void;
@@ -56,6 +68,11 @@ type PageFlipRef = {
 type FlipbookStageProps = {
   numPages: number;
   bookRef: RefObject<PageFlipRef | null>;
+  pageWidth: number;
+  width: number;
+  height: number;
+  maxWidth: number;
+  maxHeight: number;
   onFlip: (event: { data: number }) => void;
 };
 
@@ -160,7 +177,9 @@ function hasSentenceBoundary(text: string) {
   return SENTENCE_BOUNDARY_PATTERN.test(text.trimEnd());
 }
 
-export function buildNarrationAudioChunks(pageTexts: string[]): NarrationAudioChunk[] {
+export function buildNarrationAudioChunks(
+  pageTexts: string[],
+): NarrationAudioChunk[] {
   if (pageTexts.length === 0) {
     return [];
   }
@@ -239,6 +258,11 @@ export function normalizeNarrationAudioData(audioData: unknown) {
 const FlipbookStage = memo(function FlipbookStage({
   numPages,
   bookRef,
+  pageWidth,
+  width,
+  height,
+  maxWidth,
+  maxHeight,
   onFlip,
 }: FlipbookStageProps) {
   const pages = Array.from({ length: numPages }, (_, index) => index + 1);
@@ -247,13 +271,13 @@ const FlipbookStage = memo(function FlipbookStage({
     <HTMLFlipBook
       ref={bookRef}
       startPage={0}
-      width={PDF_PAGE_WIDTH}
-      height={720}
+      width={width}
+      height={height}
       size="stretch"
       minWidth={320}
-      maxWidth={PDF_PAGE_WIDTH}
+      maxWidth={maxWidth}
       minHeight={440}
-      maxHeight={720}
+      maxHeight={maxHeight}
       drawShadow={true}
       flippingTime={FLIPPING_TIME}
       usePortrait={false}
@@ -297,7 +321,7 @@ const FlipbookStage = memo(function FlipbookStage({
           >
             <Page
               pageNumber={pageNumber}
-              width={PDF_PAGE_WIDTH}
+              width={pageWidth}
               renderAnnotationLayer={false}
               renderTextLayer={false}
               className="interactive-reader__pdf-page"
@@ -336,6 +360,8 @@ export function InteractivePdfFlipbook({
   const [pageNarrationTexts, setPageNarrationTexts] = useState<string[]>([]);
   const [narrationError, setNarrationError] = useState<string | null>(null);
   const readerRef = useRef<HTMLElement | null>(null);
+  const menuToggleRef = useRef<HTMLButtonElement | null>(null);
+  const menuPanelRef = useRef<HTMLElement | null>(null);
   const bookRef = useRef<PageFlipRef | null>(null);
   const pageFlipAudioRef = useRef<HTMLAudioElement | null>(null);
   const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -354,6 +380,10 @@ export function InteractivePdfFlipbook({
   const resolvedPageFlipSoundPath =
     resolvePublicAssetPath(PAGE_FLIP_SOUND_PATH);
   const readerZoom = zoom * (isFullscreen ? FULLSCREEN_ZOOM_MULTIPLIER : 1);
+  const bookWidth = isFullscreen ? FULLSCREEN_PDF_PAGE_WIDTH : PDF_PAGE_WIDTH;
+  const bookHeight = isFullscreen ? FULLSCREEN_PDF_PAGE_HEIGHT : PDF_PAGE_HEIGHT;
+  const bookMaxWidth = isFullscreen ? FULLSCREEN_PDF_MAX_WIDTH : PDF_PAGE_WIDTH;
+  const bookMaxHeight = isFullscreen ? FULLSCREEN_PDF_MAX_HEIGHT : PDF_PAGE_HEIGHT;
 
   const formatNarrationRate = useCallback((rate: number) => {
     if (rate === 0) return undefined;
@@ -408,10 +438,15 @@ export function InteractivePdfFlipbook({
       narrationRequestId: number,
     ) => {
       const nextPageIndex = pageIndex + NARRATION_PRELOAD_LOOKAHEAD;
-      const prepareEdgeTtsAudioCacheFile = window.audioCache?.prepareEdgeTtsAudioCacheFile;
+      const prepareEdgeTtsAudioCacheFile =
+        window.audioCache?.prepareEdgeTtsAudioCacheFile;
       const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
 
-      if (nextPageIndex >= numPages || !prepareEdgeTtsAudioCacheFile || !readExtractedTextPage) {
+      if (
+        nextPageIndex >= numPages ||
+        !prepareEdgeTtsAudioCacheFile ||
+        !readExtractedTextPage
+      ) {
         return;
       }
 
@@ -419,7 +454,8 @@ export function InteractivePdfFlipbook({
 
       void (async () => {
         try {
-          const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
+          const debugTextFilePath =
+            await extractedTextDebugFilePromiseRef.current;
           if (
             preloadRequestId !== narrationPreloadRequestIdRef.current ||
             narrationRequestId !== narrationRequestIdRef.current ||
@@ -428,7 +464,10 @@ export function InteractivePdfFlipbook({
             return;
           }
 
-          const fileText = await readExtractedTextPage(debugTextFilePath, nextPageIndex + 1);
+          const fileText = await readExtractedTextPage(
+            debugTextFilePath,
+            nextPageIndex + 1,
+          );
           if (
             preloadRequestId !== narrationPreloadRequestIdRef.current ||
             narrationRequestId !== narrationRequestIdRef.current
@@ -444,7 +483,7 @@ export function InteractivePdfFlipbook({
           await prepareEdgeTtsAudioCacheFile({
             bookKey: title,
             voice: narrationOptions.voice,
-            rate: narrationOptions.rate || '',
+            rate: narrationOptions.rate || "",
             chunkIndex: nextPageIndex,
             chunkText,
           });
@@ -490,9 +529,10 @@ export function InteractivePdfFlipbook({
       setIsNarrationLoading(true);
 
       try {
-        const texts = pageNarrationTexts.length > 0
-          ? pageNarrationTexts
-          : await extractTextFromPdf();
+        const texts =
+          pageNarrationTexts.length > 0
+            ? pageNarrationTexts
+            : await extractTextFromPdf();
         if (operationId !== narrationOperationIdRef.current) return;
 
         const writeExtractedText = window.debugTools?.writeExtractedText;
@@ -505,7 +545,11 @@ export function InteractivePdfFlipbook({
           setPageNarrationTexts(texts);
         }
 
-        const filePromise = writeExtractedText({ title, pdfPath, pages: texts });
+        const filePromise = writeExtractedText({
+          title,
+          pdfPath,
+          pages: texts,
+        });
         extractedTextDebugFilePromiseRef.current = filePromise;
         const filePath = await filePromise;
         if (operationId !== narrationOperationIdRef.current) return;
@@ -532,7 +576,14 @@ export function InteractivePdfFlipbook({
         }
       }
     })();
-  }, [currentPageIndex, extractTextFromPdf, isNarrationEnabled, pageNarrationTexts, pdfPath, title]);
+  }, [
+    currentPageIndex,
+    extractTextFromPdf,
+    isNarrationEnabled,
+    pageNarrationTexts,
+    pdfPath,
+    title,
+  ]);
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
@@ -608,11 +659,17 @@ export function InteractivePdfFlipbook({
     setIsThumbnailPanelOpen((isOpen) => !isOpen);
   }, []);
 
+  const closeMenu = useCallback(() => {
+    setIsMenuOpen(false);
+    setIsTtsSettingsOpen(false);
+    setIsThumbnailPanelOpen(false);
+  }, []);
+
   const toggleMenu = useCallback(() => {
     setIsMenuOpen((prev) => {
       if (prev) {
-        // Closing menu - also close TTS submenu
         setIsTtsSettingsOpen(false);
+        setIsThumbnailPanelOpen(false);
       }
       return !prev;
     });
@@ -700,7 +757,9 @@ export function InteractivePdfFlipbook({
         if (cancelled) return;
 
         if (!voices?.length) {
-          setVoiceOptions([{ value: NARRATION_VOICE, label: "Hoài My (vi-VN)" }]);
+          setVoiceOptions([
+            { value: NARRATION_VOICE, label: "Hoài My (vi-VN)" },
+          ]);
           setSelectedVoice((currentVoice) => currentVoice || NARRATION_VOICE);
           return;
         }
@@ -718,7 +777,7 @@ export function InteractivePdfFlipbook({
 
             const label = voice.FriendlyName
               ? `${voice.FriendlyName} (${voice.Locale || value})`
-              : `${value}${voice.Locale ? ` (${voice.Locale})` : ''}`;
+              : `${value}${voice.Locale ? ` (${voice.Locale})` : ""}`;
 
             return { value, label };
           })
@@ -741,7 +800,9 @@ export function InteractivePdfFlipbook({
         }
       } catch {
         if (!cancelled) {
-          setVoiceOptions([{ value: NARRATION_VOICE, label: "Hoài My (vi-VN)" }]);
+          setVoiceOptions([
+            { value: NARRATION_VOICE, label: "Hoài My (vi-VN)" },
+          ]);
           setSelectedVoice(NARRATION_VOICE);
         }
       } finally {
@@ -780,25 +841,81 @@ export function InteractivePdfFlipbook({
     return () => window.cancelAnimationFrame(frameId);
   }, [isFullscreen, readerZoom]);
 
-   useEffect(() => {
+  useLayoutEffect(() => {
+    if (!isMenuOpen) return undefined;
+
+    const updateMenuPosition = () => {
+      const toggleButton = menuToggleRef.current;
+      if (!toggleButton) return;
+
+      const rect = toggleButton.getBoundingClientRect();
+      const width = 320;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      const left = Math.max(
+        8,
+        Math.min(rect.right - width, viewportWidth - width - 8),
+      );
+
+      // Keep the panel attached to the hamburger area while staying in the viewport.
+      menuPanelRef.current?.style.setProperty("top", `${Math.max(8, rect.bottom + window.scrollY + 8)}px`);
+      menuPanelRef.current?.style.setProperty("left", `${Math.max(8, left + window.scrollX)}px`);
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
 
-      if (isTtsSettingsOpen) {
-        closeTtsSettings();
-      } else if (isMenuOpen) {
-        toggleMenu();
-      }
-      
-      setIsThumbnailPanelOpen(false);
+      closeMenu();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMenuOpen, isTtsSettingsOpen, toggleMenu, closeTtsSettings]);
+  }, [closeMenu]);
 
   useEffect(() => {
-    if (!isNarrationEnabled || !numPages || isNarrationLoading || narrationError) {
+    if (!isMenuOpen) return undefined;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target;
+      const toggleButton = menuToggleRef.current;
+      const panel = menuPanelRef.current;
+
+      if (!(target instanceof Node)) {
+        closeMenu();
+        return;
+      }
+
+      if (
+        panel &&
+        toggleButton &&
+        !panel.contains(target) &&
+        !toggleButton.contains(target)
+      ) {
+        closeMenu();
+      }
+    };
+
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, [closeMenu, isMenuOpen]);
+
+  useEffect(() => {
+    if (
+      !isNarrationEnabled ||
+      !numPages ||
+      isNarrationLoading ||
+      narrationError
+    ) {
       return undefined;
     }
 
@@ -838,7 +955,8 @@ export function InteractivePdfFlipbook({
         void (async () => {
           try {
             const debugTextFilePath = await debugTextFilePromise;
-            const emptyExtractedTextFile = window.debugTools?.emptyExtractedTextFile;
+            const emptyExtractedTextFile =
+              window.debugTools?.emptyExtractedTextFile;
 
             if (!debugTextFilePath?.trim() || !emptyExtractedTextFile) {
               throw new Error("Không thể làm trống file văn bản đã định dạng.");
@@ -897,14 +1015,18 @@ export function InteractivePdfFlipbook({
 
     void (async () => {
       try {
-        const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
+        const debugTextFilePath =
+          await extractedTextDebugFilePromiseRef.current;
         const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
 
         if (!debugTextFilePath?.trim() || !readExtractedTextPage) {
           throw new Error("Không thể đọc file văn bản đã định dạng.");
         }
 
-        const fileText = await readExtractedTextPage(debugTextFilePath, narrationPageIndex + 1);
+        const fileText = await readExtractedTextPage(
+          debugTextFilePath,
+          narrationPageIndex + 1,
+        );
         const narrationText = sanitizeNarrationText(fileText);
 
         if (!narrationText) {
@@ -929,7 +1051,7 @@ export function InteractivePdfFlipbook({
           ? await audioCache.getOrCreateEdgeTtsAudioCacheFile({
               bookKey: title,
               voice: narrationOptions.voice,
-              rate: narrationOptions.rate || '',
+              rate: narrationOptions.rate || "",
               chunkIndex: narrationPageIndex,
               chunkText: narrationText,
             })
@@ -949,12 +1071,19 @@ export function InteractivePdfFlipbook({
           audio.currentTime = 0;
           audio.load();
           await audio.play();
-          preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
+          preloadNextNarrationPage(
+            narrationPageIndex,
+            narrationOptions,
+            requestId,
+          );
           return;
         }
 
         setIsNarrationSynthesizing(true);
-        const audioData = await edgeTts.synthesize(narrationText, narrationOptions);
+        const audioData = await edgeTts.synthesize(
+          narrationText,
+          narrationOptions,
+        );
 
         if (cancelled || requestId !== narrationRequestIdRef.current) {
           return;
@@ -972,7 +1101,11 @@ export function InteractivePdfFlipbook({
         audio.currentTime = 0;
         audio.load();
         await audio.play();
-        preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
+        preloadNextNarrationPage(
+          narrationPageIndex,
+          narrationOptions,
+          requestId,
+        );
       } catch (error) {
         if (cancelled || requestId !== narrationRequestIdRef.current) {
           return;
@@ -1053,10 +1186,10 @@ export function InteractivePdfFlipbook({
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       const settingsButton = readerRef.current?.querySelector(
-        'button[aria-label="Cài đặt TTS"]'
+        'button[aria-label="Cài đặt TTS"]',
       );
       const submenu = readerRef.current?.querySelector(
-        ".interactive-reader__tts-submenu"
+        ".interactive-reader__tts-submenu",
       );
 
       if (
@@ -1101,326 +1234,329 @@ export function InteractivePdfFlipbook({
         <p className="interactive-reader__status">
           Trang {currentPage} / {numPages || "-"}
         </p>
-        
-        {/* NEW: Hamburger Menu Toggle */}
+
         <button
           type="button"
           className="interactive-reader__menu-toggle"
+          ref={menuToggleRef}
           onClick={toggleMenu}
           aria-expanded={isMenuOpen}
-          aria-label={isMenuOpen ? "Đóng menu điều khiển" : "Mở menu điều khiển"}
+          aria-label={
+            isMenuOpen ? "Đóng menu điều khiển" : "Mở menu điều khiển"
+          }
           title={isMenuOpen ? "Đóng menu điều khiển" : "Mở menu điều khiển"}
         >
           {isMenuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
         </button>
       </header>
 
-      {/* Menu Panel (Dropdown) */}
-      <nav
-        className="interactive-reader__menu-panel"
-        role="navigation"
-        aria-label="Menu điều khiển trình đọc"
-        data-state={isMenuOpen ? "open" : "closed"}
-      >
+      <div className="interactive-reader__shell">
         {isMenuOpen && (
-          <div className="interactive-reader__menu-sections">
-            {/* Section 1: Navigation */}
-            <div className="menu-section menu-section--navigation">
-              <h3 className="menu-section__title">Navigation</h3>
-              <button
-                type="button"
-                onClick={flipToPreviousPage}
-                disabled={currentPageIndex <= 0}
-                aria-label="Trang trước"
-                title="Trang trước"
-              >
-                <ChevronLeft aria-hidden="true" />
-                Trang trước
-              </button>
-              <button
-                type="button"
-                onClick={flipToNextPage}
-                disabled={!numPages || currentPageIndex >= numPages - 1}
-                aria-label="Trang tiếp theo"
-                title="Trang tiếp theo"
-              >
-                <ChevronRight aria-hidden="true" />
-                Trang tiếp theo
-              </button>
-            </div>
-
-            {/* Section 2: View Controls */}
-            <div className="menu-section menu-section--view">
-              <h3 className="menu-section__title">View</h3>
-              <button
-                type="button"
-                onClick={() => changeZoom(1)}
-                disabled={zoom >= MAX_ZOOM}
-                aria-label="Phóng to"
-                title="Phóng to"
-              >
-                <ZoomIn aria-hidden="true" />
-                Phóng to
-              </button>
-              <button
-                type="button"
-                onClick={() => changeZoom(-1)}
-                disabled={zoom <= MIN_ZOOM}
-                aria-label="Thu nhỏ"
-                title="Thu nhỏ"
-              >
-                <ZoomOut aria-hidden="true" />
-                Thu nhỏ
-              </button>
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                aria-label={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-                title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-              >
-                {isFullscreen ? <Minimize aria-hidden="true" /> : <Maximize aria-hidden="true" />}
-                {isFullscreen ? "Thoát" : "Toàn màn hình"}
-              </button>
-              <button
-                type="button"
-                onClick={toggleThumbnails}
-                aria-label="Hình thu nhỏ"
-                title="Hình thu nhỏ"
-              >
-                <Images aria-hidden="true" />
-                Hình thu nhỏ
-              </button>
-            </div>
-
-            {/* Section 3: Audio & Tools */}
-            <div className="menu-section menu-section--audio">
-              <h3 className="menu-section__title">Audio & Tools</h3>
-              <button
-                type="button"
-                onClick={toggleNarration}
-                disabled={!numPages || isNarrationLoading}
-                aria-label={
-                  isNarrationSynthesizing
-                    ? "Đang tạo giọng đọc"
-                    : isNarrationEnabled
-                      ? "Dừng đọc"
-                      : "Đọc tự động"
-                }
-                title={
-                  isNarrationSynthesizing
-                    ? "Đang tạo giọng đọc"
-                    : isNarrationEnabled
-                      ? "Dừng đọc"
-                      : "Đọc tự động"
-                }
-              >
-                {isNarrationEnabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                {isNarrationSynthesizing
-                  ? "Đang tạo giọng đọc..."
-                  : isNarrationEnabled
-                    ? "Dừng đọc"
-                    : "Đọc tự động"}
-              </button>
-
-              {/* TTS Settings with Submenu */}
-              <div style={{ position: "relative" }}>
+          <nav
+            ref={menuPanelRef}
+            className="interactive-reader__menu-panel"
+            role="navigation"
+            aria-label="Menu điều khiển trình đọc"
+            data-state="open"
+            style={{ position: "absolute", zIndex: 40 }}
+          >
+            <div className="interactive-reader__menu-sections">
+              {/* Section 1: View Controls */}
+              <div className="menu-section menu-section--view">
+                <h3 className="menu-section__title">View</h3>
                 <button
                   type="button"
-                  onClick={toggleTtsSettings}
-                  aria-label="Cài đặt TTS"
-                  title="Cài đặt TTS"
-                  aria-expanded={isTtsSettingsOpen}
+                  onClick={() => changeZoom(1)}
+                  disabled={zoom >= MAX_ZOOM}
+                  aria-label="Phóng to"
+                  title="Phóng to"
                 >
-                  <Settings aria-hidden="true" />
-                  Cài đặt TTS
+                  <ZoomIn aria-hidden="true" />
+                  Phóng to
                 </button>
-
-                {isTtsSettingsOpen && (
-                  <div
-                    className="interactive-reader__tts-submenu"
-                    aria-label="Cài đặt TTS"
-                  >
-                    <div className="interactive-reader__tts-submenu-header">
-                      <h4>Cài đặt TTS</h4>
-                      <button
-                        type="button"
-                        className="interactive-reader__tts-submenu-close"
-                        onClick={closeTtsSettings}
-                        aria-label="Đóng"
-                        title="Đóng"
-                      >
-                        <X aria-hidden="true" />
-                      </button>
-                    </div>
-
-                    <label className="interactive-reader__tts-field">
-                      <span>Giọng đọc</span>
-                      <select
-                        value={selectedVoice}
-                        onChange={(event) => setSelectedVoice(event.target.value)}
-                        disabled={isVoiceLoading || voiceOptions.length === 0}
-                        aria-label="Giọng đọc"
-                      >
-                        {voiceOptions.map((voice) => (
-                          <option key={voice.value} value={voice.value}>
-                            {voice.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="interactive-reader__tts-field">
-                      <span>Tốc độ đọc</span>
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={5}
-                        value={speechRate}
-                        onChange={(event) => setSpeechRate(Number(event.target.value))}
-                        aria-label="Tốc độ đọc"
-                      />
-                      <output aria-live="polite">
-                        {speechRate === 0
-                          ? "Bình thường"
-                          : `${speechRate > 0 ? "+" : ""}${speechRate}%`}
-                      </output>
-                    </label>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => changeZoom(-1)}
+                  disabled={zoom <= MIN_ZOOM}
+                  aria-label="Thu nhỏ"
+                  title="Thu nhỏ"
+                >
+                  <ZoomOut aria-hidden="true" />
+                  Thu nhỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  aria-label={
+                    isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"
+                  }
+                  title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+                >
+                  {isFullscreen ? (
+                    <Minimize aria-hidden="true" />
+                  ) : (
+                    <Maximize aria-hidden="true" />
+                  )}
+                  {isFullscreen ? "Thoát" : "Toàn màn hình"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleThumbnails}
+                  aria-label="Hình thu nhỏ"
+                  title="Hình thu nhỏ"
+                >
+                  <Images aria-hidden="true" />
+                  Hình thu nhỏ
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsAutoFlipEnabled((prev) => !prev)}
-                disabled={!numPages || currentPageIndex >= numPages - 1}
-                aria-label={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
-                title={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
-              >
-                {isAutoFlipEnabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                {isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => flipToPage(0)}
-                disabled={!numPages || currentPageIndex <= 0}
-                aria-label="Trang đầu"
-                title="Trang đầu"
-              >
-                <SkipBack aria-hidden="true" />
-                Trang đầu
-              </button>
-
-              <button
-                type="button"
-                onClick={() => flipToPage(numPages - 1)}
-                disabled={!numPages || currentPageIndex >= numPages - 1}
-                aria-label="Trang cuối"
-                title="Trang cuối"
-              >
-                <SkipForward aria-hidden="true" />
-                Trang cuối
-              </button>
-            </div>
-          </div>
-        )}
-      </nav>
-
-      {narrationError && (
-        <p className="interactive-reader__message interactive-reader__message--error">
-          {narrationError}
-        </p>
-      )}
-
-      <button
-        type="button"
-        className="interactive-reader__nav interactive-reader__nav--prev"
-        onClick={flipToPreviousPage}
-        disabled={currentPageIndex <= 0}
-        aria-label="Trang trước"
-        title="Trang trước"
-      >
-        <ChevronLeft aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className="interactive-reader__nav interactive-reader__nav--next"
-        onClick={flipToNextPage}
-        disabled={!numPages || currentPageIndex >= numPages - 1}
-        aria-label="Trang tiếp theo"
-        title="Trang tiếp theo"
-      >
-        <ChevronRight aria-hidden="true" />
-      </button>
-
-      <Document
-        className="interactive-reader__document"
-        file={resolvedPdfPath}
-        loading={<p className="interactive-reader__message">Đang tải PDF...</p>}
-        error={
-          <div className="interactive-reader__message interactive-reader__message--error">
-            <p>Không thể tải PDF.</p>
-            {pdfError && <p>{pdfError}</p>}
-            <p>Đường dẫn: {resolvedPdfPath}</p>
-          </div>
-        }
-        onLoadError={(error) => setPdfError(error.message)}
-        onLoadSuccess={({ numPages: loadedPages }) => {
-          setPdfError(null);
-          setNumPages(loadedPages);
-        }}
-      >
-        {isThumbnailPanelOpen && (
-          <aside
-            className="interactive-reader__thumbnails"
-            aria-label="Bảng hình thu nhỏ PDF"
-          >
-            <div className="interactive-reader__thumbnails-header">
-              <h3>Hình thu nhỏ</h3>
-              <button
-                type="button"
-                onClick={() => setIsThumbnailPanelOpen(false)}
-                aria-label="Đóng hình thu nhỏ"
-                title="Đóng hình thu nhỏ"
-              >
-                <X aria-hidden="true" />
-              </button>
-            </div>
-            <div className="interactive-reader__thumbnails-grid">
-              {pages.map((pageNumber) => (
+              {/* Section 2: Audio & Tools */}
+              <div className="menu-section menu-section--audio">
+                <h3 className="menu-section__title">Audio & Tools</h3>
                 <button
                   type="button"
-                  key={pageNumber}
-                  className="interactive-reader__thumbnail"
-                  onClick={() => flipToPage(pageNumber - 1)}
-                  aria-label={`Đến trang ${pageNumber}`}
-                  aria-current={pageNumber === currentPage ? "page" : undefined}
+                  onClick={toggleNarration}
+                  disabled={!numPages || isNarrationLoading}
+                  aria-label={
+                    isNarrationSynthesizing
+                      ? "Đang tạo giọng đọc"
+                      : isNarrationEnabled
+                        ? "Dừng đọc"
+                        : "Đọc tự động"
+                  }
+                  title={
+                    isNarrationSynthesizing
+                      ? "Đang tạo giọng đọc"
+                      : isNarrationEnabled
+                        ? "Dừng đọc"
+                        : "Đọc tự động"
+                  }
                 >
-                  <Page
-                    pageNumber={pageNumber}
-                    width={92}
-                    renderAnnotationLayer={false}
-                    renderTextLayer={false}
-                    className="interactive-reader__thumbnail-page"
-                  />
-                  <span>Trang {pageNumber}</span>
+                  {isNarrationEnabled ? (
+                    <Pause aria-hidden="true" />
+                  ) : (
+                    <Play aria-hidden="true" />
+                  )}
+                  {isNarrationSynthesizing
+                    ? "Đang tạo giọng đọc..."
+                    : isNarrationEnabled
+                      ? "Dừng đọc"
+                      : "Đọc tự động"}
                 </button>
-              ))}
+
+                {/* TTS Settings with Submenu */}
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={toggleTtsSettings}
+                    aria-label="Cài đặt TTS"
+                    title="Cài đặt TTS"
+                    aria-expanded={isTtsSettingsOpen}
+                  >
+                    <Settings aria-hidden="true" />
+                    Cài đặt TTS
+                  </button>
+
+                  {isTtsSettingsOpen && (
+                    <div
+                      className="interactive-reader__tts-submenu"
+                      aria-label="Cài đặt TTS"
+                    >
+                      <div className="interactive-reader__tts-submenu-header">
+                        <h4>Cài đặt TTS</h4>
+                        <button
+                          type="button"
+                          className="interactive-reader__tts-submenu-close"
+                          onClick={closeTtsSettings}
+                          aria-label="Đóng"
+                          title="Đóng"
+                        >
+                          <X aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      <label className="interactive-reader__tts-field">
+                        <span>Giọng đọc</span>
+                        <select
+                          value={selectedVoice}
+                          onChange={(event) =>
+                            setSelectedVoice(event.target.value)
+                          }
+                          disabled={isVoiceLoading || voiceOptions.length === 0}
+                          aria-label="Giọng đọc"
+                        >
+                          {voiceOptions.map((voice) => (
+                            <option key={voice.value} value={voice.value}>
+                              {voice.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="interactive-reader__tts-field">
+                        <span>Tốc độ đọc</span>
+                        <input
+                          type="range"
+                          min={-50}
+                          max={50}
+                          step={5}
+                          value={speechRate}
+                          onChange={(event) =>
+                            setSpeechRate(Number(event.target.value))
+                          }
+                          aria-label="Tốc độ đọc"
+                        />
+                        <output aria-live="polite">
+                          {speechRate === 0
+                            ? "Bình thường"
+                            : `${speechRate > 0 ? "+" : ""}${speechRate}%`}
+                        </output>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAutoFlipEnabled((prev) => !prev)}
+                  disabled={!numPages || currentPageIndex >= numPages - 1}
+                  aria-label={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
+                  title={isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật trang"}
+                >
+                  {isAutoFlipEnabled ? (
+                    <Pause aria-hidden="true" />
+                  ) : (
+                    <Play aria-hidden="true" />
+                  )}
+                  {isAutoFlipEnabled ? "Dừng tự lật" : "Tự lật"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => flipToPage(0)}
+                  disabled={!numPages || currentPageIndex <= 0}
+                  aria-label="Trang đầu"
+                  title="Trang đầu"
+                >
+                  <SkipBack aria-hidden="true" />
+                  Trang đầu
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => flipToPage(numPages - 1)}
+                  disabled={!numPages || currentPageIndex >= numPages - 1}
+                  aria-label="Trang cuối"
+                  title="Trang cuối"
+                >
+                  <SkipForward aria-hidden="true" />
+                  Trang cuối
+                </button>
+              </div>
             </div>
-          </aside>
+          </nav>
         )}
-      {numPages > 0 && (
-          <div className="interactive-reader__book-shell">
-            <FlipbookStage
-              key={resolvedPdfPath}
-              numPages={numPages}
-              bookRef={bookRef}
-              onFlip={handleFlip}
-            />
-          </div>
+
+        {narrationError && (
+          <p className="interactive-reader__message interactive-reader__message--error">
+            {narrationError}
+          </p>
         )}
-      </Document>
+
+        <button
+          type="button"
+          className="interactive-reader__nav interactive-reader__nav--prev"
+          onClick={flipToPreviousPage}
+          disabled={currentPageIndex <= 0}
+          aria-label="Trang trước"
+          title="Trang trước"
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="interactive-reader__nav interactive-reader__nav--next"
+          onClick={flipToNextPage}
+          disabled={!numPages || currentPageIndex >= numPages - 1}
+          aria-label="Trang tiếp theo"
+          title="Trang tiếp theo"
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
+
+        <Document
+          className="interactive-reader__document"
+          file={resolvedPdfPath}
+          loading={<p className="interactive-reader__message">Đang tải PDF...</p>}
+          error={
+            <div className="interactive-reader__message interactive-reader__message--error">
+              <p>Không thể tải PDF.</p>
+              {pdfError && <p>{pdfError}</p>}
+              <p>Đường dẫn: {resolvedPdfPath}</p>
+            </div>
+          }
+          onLoadError={(error) => setPdfError(error.message)}
+          onLoadSuccess={({ numPages: loadedPages }) => {
+            setPdfError(null);
+            setNumPages(loadedPages);
+          }}
+        >
+          {isThumbnailPanelOpen && (
+            <aside
+              className="interactive-reader__thumbnails"
+              aria-label="Bảng hình thu nhỏ PDF"
+            >
+              <div className="interactive-reader__thumbnails-header">
+                <h3>Hình thu nhỏ</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsThumbnailPanelOpen(false)}
+                  aria-label="Đóng hình thu nhỏ"
+                  title="Đóng hình thu nhỏ"
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+              <div className="interactive-reader__thumbnails-grid">
+                {pages.map((pageNumber) => (
+                  <button
+                    type="button"
+                    key={pageNumber}
+                    className="interactive-reader__thumbnail"
+                    onClick={() => flipToPage(pageNumber - 1)}
+                    aria-label={`Đến trang ${pageNumber}`}
+                    aria-current={pageNumber === currentPage ? "page" : undefined}
+                  >
+                    <Page
+                      pageNumber={pageNumber}
+                      width={92}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                      className="interactive-reader__thumbnail-page"
+                    />
+                    <span>Trang {pageNumber}</span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+          )}
+          {numPages > 0 && (
+            <div className="interactive-reader__book-shell">
+              <FlipbookStage
+                key={resolvedPdfPath}
+                numPages={numPages}
+                bookRef={bookRef}
+                pageWidth={bookWidth}
+                width={bookWidth}
+                height={bookHeight}
+                maxWidth={bookMaxWidth}
+                maxHeight={bookMaxHeight}
+                onFlip={handleFlip}
+              />
+            </div>
+          )}
+        </Document>
+      </div>
       <audio
         ref={pageFlipAudioRef}
         src={resolvedPageFlipSoundPath}
