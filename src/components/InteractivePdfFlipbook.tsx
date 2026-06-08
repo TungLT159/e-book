@@ -1215,7 +1215,11 @@ export function InteractivePdfFlipbook({
                 }
               >
                 {isNarrationEnabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                {isNarrationEnabled ? "Dừng đọc" : "Đọc tự động"}
+                {isNarrationSynthesizing
+                  ? "Đang tạo giọng đọc..."
+                  : isNarrationEnabled
+                    ? "Dừng đọc"
+                    : "Đọc tự động"}
               </button>
 
               {/* TTS Settings with Submenu */}

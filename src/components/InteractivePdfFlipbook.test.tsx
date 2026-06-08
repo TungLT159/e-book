@@ -430,7 +430,7 @@ describe('InteractivePdfFlipbook', () => {
     if (prevButton) fireEvent.click(prevButton);
     expect(flipPrev).toHaveBeenCalledTimes(1);
 
-    // Sidebar buttons are now directly accessible (unique names in sidebar)
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /trang đầu/i }));
     expect(flip).toHaveBeenCalledWith(0);
 
@@ -450,14 +450,13 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    // Sidebar buttons are now directly accessible, no need for menu toggle
-    // These are in the sidebar menu section and should be unique
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     const firstPageButtons = Array.from(screen.getAllByRole('button', { name: /trang đầu/i }));
-    const firstButton = firstPageButtons[firstPageButtons.length - 1]; // Get the one in sidebar
+    const firstButton = firstPageButtons[firstPageButtons.length - 1];
     expect(firstButton).toBeDisabled();
     
     const lastPageButtons = Array.from(screen.getAllByRole('button', { name: /trang cuối/i }));
-    const lastButton = lastPageButtons[lastPageButtons.length - 1]; // Get the one in sidebar
+    const lastButton = lastPageButtons[lastPageButtons.length - 1];
     expect(lastButton).not.toBeDisabled();
 
     vi.useFakeTimers();
@@ -466,7 +465,6 @@ describe('InteractivePdfFlipbook', () => {
       vi.advanceTimersByTime(650);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     expect(screen.getByRole('button', { name: /trang đầu/i })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: /trang cuối/i })).toBeDisabled();
   });
@@ -485,7 +483,7 @@ describe('InteractivePdfFlipbook', () => {
 
     const reader = screen.getByLabelText('Trình đọc tương tác cho Demo book');
 
-    // Sidebar buttons are now directly accessible
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /phóng to/i }));
     expect(reader).toHaveStyle({ '--interactive-reader-zoom': '1.1' });
 
@@ -523,7 +521,7 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    // Sidebar buttons are now directly accessible
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
 
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
@@ -552,7 +550,7 @@ describe('InteractivePdfFlipbook', () => {
 
     await screen.findByText('PDF page 1');
 
-    // Sidebar buttons are now directly accessible
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /toàn màn hình/i }));
     await act(async () => undefined);
 
@@ -639,9 +637,10 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    expect(screen.getByLabelText('Menu điều khiển trình đọc')).toBeInTheDocument();
+    const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
+    expect(menuPanel).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
+    expect(menuPanel).toHaveAttribute('data-state', 'closed');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /hình thu nhỏ/i }));
@@ -741,6 +740,7 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
 
     await waitFor(() =>
@@ -800,6 +800,7 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
 
     await waitFor(() =>
