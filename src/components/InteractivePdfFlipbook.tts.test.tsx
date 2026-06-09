@@ -138,7 +138,7 @@ describe('InteractivePdfFlipbook narration', () => {
     await act(async () => undefined);
     await act(async () => undefined);
 
-    expect(flipNext).toHaveBeenCalledTimes(1);
+    expect(flipTo).toHaveBeenCalledWith(1);
     expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
       voice: 'vi-VN-NamMinhNeural',
     });
@@ -167,7 +167,7 @@ describe('InteractivePdfFlipbook narration', () => {
       vi.advanceTimersByTime(1500);
     });
 
-    expect(flipNext).toHaveBeenCalledTimes(1);
+    expect(flipTo).toHaveBeenCalledWith(1);
     expect(synthesize).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -292,6 +292,74 @@ describe('InteractivePdfFlipbook narration', () => {
 
     expect(play).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it('continues narration when manual navigation occurs during the inter-page pause', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+
+    vi.useFakeTimers();
+    act(() => {
+      screen.getByLabelText('Âm thanh đọc văn bản').dispatchEvent(new Event('ended'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^trang tiếp theo$/i }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500 + 650);
+    });
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
+      voice: 'vi-VN-NamMinhNeural',
+    });
+  });
+
+  it('directly flips automatic narration to its next page when the visible page is far away', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/multi-page-demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^trang cuối$/i }));
+    await waitFor(() => expect(flipTo).toHaveBeenCalledWith(5));
+    flipTo.mockClear();
+
+    vi.useFakeTimers();
+    act(() => {
+      screen.getByLabelText('Âm thanh đọc văn bản').dispatchEvent(new Event('ended'));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(flipTo).toHaveBeenCalledWith(1);
+    expect(synthesize).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(650);
+    });
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
+      voice: 'vi-VN-NamMinhNeural',
+    });
   });
 
   it('shows the auto-read bar as loading first, then playback controls after audio starts', async () => {

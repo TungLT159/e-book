@@ -676,39 +676,29 @@ export function InteractivePdfFlipbook({
     [playPageFlipSound, setVisiblePage],
   );
 
-  const clearPendingNarrationPageChange = useCallback(() => {
-    if (narrationPagePauseTimeoutRef.current !== null) {
-      window.clearTimeout(narrationPagePauseTimeoutRef.current);
-      narrationPagePauseTimeoutRef.current = null;
-    }
-  }, []);
-
   const flipToPage = useCallback(
     (pageIndex: number) => {
       if (!numPages) return;
 
       const targetPageIndex = Math.min(Math.max(pageIndex, 0), numPages - 1);
-      clearPendingNarrationPageChange();
       bookRef.current?.pageFlip().flip(targetPageIndex);
       setVisiblePage(targetPageIndex);
       setIsThumbnailPanelOpen(false);
     },
-    [clearPendingNarrationPageChange, numPages, setVisiblePage],
+    [numPages, setVisiblePage],
   );
 
   const flipToPreviousPage = useCallback(() => {
     if (currentPageIndex <= 0) return;
 
-    clearPendingNarrationPageChange();
     bookRef.current?.pageFlip().flipPrev();
-  }, [clearPendingNarrationPageChange, currentPageIndex]);
+  }, [currentPageIndex]);
 
   const flipToNextPage = useCallback(() => {
     if (!numPages || currentPageIndexRef.current >= numPages - 1) return;
 
-    clearPendingNarrationPageChange();
     bookRef.current?.pageFlip().flipNext();
-  }, [clearPendingNarrationPageChange, numPages]);
+  }, [numPages]);
 
   const readNarrationPage = useCallback(
     (targetPageIndex: number) => {
@@ -1161,7 +1151,7 @@ export function InteractivePdfFlipbook({
           return;
         }
 
-        flipToNextPage();
+        bookRef.current?.pageFlip().flip(nextNarrationPageIndex);
         narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
           narrationPagePauseTimeoutRef.current = null;
 
@@ -1314,7 +1304,6 @@ export function InteractivePdfFlipbook({
       setIsNarrationSynthesizing(false);
     };
   }, [
-    flipToNextPage,
     isPageVisibleInCurrentSpread,
     isNarrationEnabled,
     isNarrationLoading,
