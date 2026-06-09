@@ -383,6 +383,7 @@ export function InteractivePdfFlipbook({
   const flipSettledTimeoutRef = useRef<number | null>(null);
   const narrationBlobUrlRef = useRef<string | null>(null);
   const narrationRequestIdRef = useRef(0);
+  const narrationPlaybackOperationIdRef = useRef(0);
   const narrationPreloadRequestIdRef = useRef(0);
   const narrationPagePauseTimeoutRef = useRef<number | null>(null);
   const isNarrationPausedRef = useRef(false);
@@ -447,6 +448,7 @@ export function InteractivePdfFlipbook({
 
   const stopNarration = useCallback(() => {
     narrationRequestIdRef.current += 1;
+    narrationPlaybackOperationIdRef.current += 1;
     narrationPreloadRequestIdRef.current += 1;
 
     if (narrationPagePauseTimeoutRef.current !== null) {
@@ -630,13 +632,16 @@ export function InteractivePdfFlipbook({
     if (!audio || isAutoReadPreparing) return;
 
     if (isNarrationPaused) {
+      const playbackOperationId = ++narrationPlaybackOperationIdRef.current;
       void audio
         .play()
         .then(() => {
+          if (playbackOperationId !== narrationPlaybackOperationIdRef.current) return;
           isNarrationPausedRef.current = false;
           setIsNarrationPaused(false);
         })
         .catch(() => {
+          if (playbackOperationId !== narrationPlaybackOperationIdRef.current) return;
           setNarrationError("Không thể phát Edge TTS.");
           isNarrationPausedRef.current = false;
           setIsNarrationPaused(false);
@@ -707,6 +712,7 @@ export function InteractivePdfFlipbook({
       if (!numPages || targetPageIndex < 0 || targetPageIndex >= numPages) return;
 
       const requestId = ++narrationRequestIdRef.current;
+      narrationPlaybackOperationIdRef.current += 1;
       narrationPreloadRequestIdRef.current += 1;
 
       if (narrationPagePauseTimeoutRef.current !== null) {
@@ -1245,6 +1251,7 @@ export function InteractivePdfFlipbook({
           audio.currentTime = 0;
           audio.load();
           setIsNarrationPaused(false);
+          narrationPlaybackOperationIdRef.current += 1;
           await audio.play();
           preloadNextNarrationPage(
             narrationPageIndex,
@@ -1276,6 +1283,7 @@ export function InteractivePdfFlipbook({
         audio.currentTime = 0;
         audio.load();
         setIsNarrationPaused(false);
+        narrationPlaybackOperationIdRef.current += 1;
         await audio.play();
         preloadNextNarrationPage(
           narrationPageIndex,
