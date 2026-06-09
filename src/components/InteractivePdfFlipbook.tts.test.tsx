@@ -181,7 +181,7 @@ describe('InteractivePdfFlipbook narration', () => {
 
     vi.useFakeTimers();
 
-    fireEvent.click(screen.getByRole('button', { name: /trang tiếp theo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^trang tiếp theo$/i }));
 
     await act(async () => {
       vi.advanceTimersByTime(650);
@@ -230,15 +230,54 @@ describe('InteractivePdfFlipbook narration', () => {
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
 
-    expect(await screen.findByText('Đang tạo giọng đọc...')).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /trạng thái đọc tự động/i })).toHaveTextContent(
+      'Đang tạo giọng đọc...',
+    );
 
     await act(async () => {
       resolveSynthesize(new Uint8Array([1, 2, 3]).buffer);
     });
 
     await waitFor(() =>
-      expect(screen.queryByText('Đang tạo giọng đọc...')).not.toBeInTheDocument(),
+      expect(screen.queryByRole('status', { name: /trạng thái đọc tự động/i })).not.toBeInTheDocument(),
     );
+  });
+
+  it('keeps auto-read paused during the inter-page delay', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    const narrationAudio = screen.getByLabelText('Âm thanh đọc văn bản');
+    act(() => {
+      narrationAudio.dispatchEvent(new Event('ended'));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /tạm dừng đọc/i }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500 + 650);
+    });
+    await act(async () => undefined);
+
+    expect(flipNext).not.toHaveBeenCalled();
+    expect(synthesize).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /tiếp tục đọc/i }));
+
+    await act(async () => undefined);
+
+    expect(play).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it('shows the auto-read bar as loading first, then playback controls after audio starts', async () => {

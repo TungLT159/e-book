@@ -385,6 +385,7 @@ export function InteractivePdfFlipbook({
   const narrationRequestIdRef = useRef(0);
   const narrationPreloadRequestIdRef = useRef(0);
   const narrationPagePauseTimeoutRef = useRef<number | null>(null);
+  const isNarrationPausedRef = useRef(false);
   const narrationOperationIdRef = useRef(0);
   const extractedTextDebugFilePromiseRef = useRef<Promise<string> | null>(null);
 
@@ -413,6 +414,10 @@ export function InteractivePdfFlipbook({
   const bookMaxWidth = isFullscreen ? fullscreenAvailableWidth : PDF_PAGE_WIDTH;
   const bookMaxHeight = isFullscreen ? fullscreenAvailableHeight : normalAvailableHeight;
   const isAutoReadPreparing = isNarrationLoading || isNarrationSynthesizing;
+
+  useEffect(() => {
+    isNarrationPausedRef.current = isNarrationPaused;
+  }, [isNarrationPaused]);
 
   const formatNarrationRate = useCallback((rate: number) => {
     if (rate === 0) return undefined;
@@ -628,6 +633,7 @@ export function InteractivePdfFlipbook({
       void audio
         .play()
         .then(() => {
+          isNarrationPausedRef.current = false;
           setIsNarrationPaused(false);
         })
         .catch(() => {
@@ -637,7 +643,13 @@ export function InteractivePdfFlipbook({
       return;
     }
 
+    if (narrationPagePauseTimeoutRef.current !== null) {
+      window.clearTimeout(narrationPagePauseTimeoutRef.current);
+      narrationPagePauseTimeoutRef.current = null;
+    }
+
     audio.pause();
+    isNarrationPausedRef.current = true;
     setIsNarrationPaused(true);
   }, [isAutoReadPreparing, isNarrationPaused]);
 
@@ -1084,6 +1096,10 @@ export function InteractivePdfFlipbook({
           return;
         }
 
+        if (isNarrationPausedRef.current) {
+          return;
+        }
+
         if (isPageVisibleInCurrentSpread(nextNarrationPageIndex)) {
           setNarrationPageIndex(nextNarrationPageIndex);
           return;
@@ -1094,6 +1110,10 @@ export function InteractivePdfFlipbook({
           narrationPagePauseTimeoutRef.current = null;
 
           if (cancelled || requestId !== narrationRequestIdRef.current) {
+            return;
+          }
+
+          if (isNarrationPausedRef.current) {
             return;
           }
 
