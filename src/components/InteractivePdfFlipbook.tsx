@@ -700,6 +700,54 @@ export function InteractivePdfFlipbook({
     bookRef.current?.pageFlip().flipNext();
   }, [numPages]);
 
+  const readNarrationPage = useCallback(
+    (targetPageIndex: number) => {
+      if (!numPages || targetPageIndex < 0 || targetPageIndex >= numPages) return;
+
+      narrationRequestIdRef.current += 1;
+      narrationPreloadRequestIdRef.current += 1;
+
+      if (narrationPagePauseTimeoutRef.current !== null) {
+        window.clearTimeout(narrationPagePauseTimeoutRef.current);
+        narrationPagePauseTimeoutRef.current = null;
+      }
+
+      const audio = narrationAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+
+      if (narrationBlobUrlRef.current) {
+        URL.revokeObjectURL(narrationBlobUrlRef.current);
+        narrationBlobUrlRef.current = null;
+      }
+
+      setNarrationError(null);
+      isNarrationPausedRef.current = false;
+      setIsNarrationPaused(false);
+      setIsNarrationSynthesizing(false);
+
+      if (isPageVisibleInCurrentSpread(targetPageIndex)) {
+        setNarrationPageIndex(targetPageIndex);
+        return;
+      }
+
+      if (targetPageIndex < currentPageIndexRef.current) {
+        bookRef.current?.pageFlip().flipPrev();
+      } else {
+        bookRef.current?.pageFlip().flipNext();
+      }
+
+      narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
+        narrationPagePauseTimeoutRef.current = null;
+        setNarrationPageIndex(targetPageIndex);
+      }, FLIPPING_TIME);
+    },
+    [isPageVisibleInCurrentSpread, numPages],
+  );
+
   const changeZoom = useCallback((direction: 1 | -1) => {
     setZoom((currentZoom) => {
       const nextZoom = currentZoom + direction * ZOOM_STEP;
@@ -1610,7 +1658,7 @@ export function InteractivePdfFlipbook({
                 <button
                   type="button"
                   className="interactive-reader__auto-read-button"
-                  onClick={() => undefined}
+                  onClick={() => readNarrationPage(narrationPageIndex - 1)}
                   disabled={narrationPageIndex <= 0}
                   aria-label="Đọc trang trước"
                   title="Đọc trang trước"
@@ -1635,7 +1683,7 @@ export function InteractivePdfFlipbook({
                 <button
                   type="button"
                   className="interactive-reader__auto-read-button"
-                  onClick={() => undefined}
+                  onClick={() => readNarrationPage(narrationPageIndex + 1)}
                   disabled={!numPages || narrationPageIndex >= numPages - 1}
                   aria-label="Đọc trang tiếp theo"
                   title="Đọc trang tiếp theo"
