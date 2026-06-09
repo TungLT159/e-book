@@ -310,6 +310,29 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(screen.queryByText('Đang tạo giọng đọc...')).not.toBeInTheDocument();
   });
 
+  it('pauses and resumes the current narration from the auto-read bar', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /tạm dừng đọc/i }));
+    expect(pause).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /tiếp tục đọc/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /tiếp tục đọc/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument());
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
   it('removes invalid surrogate characters before narration', () => {
     expect(sanitizeNarrationText('Trang \udc9d một\n  nội dung')).toBe('Trang một nội dung');
   });
