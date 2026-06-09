@@ -265,9 +265,9 @@ describe('InteractivePdfFlipbook', () => {
       expect.objectContaining({
         startPage: 0,
         width: 660,
-        height: 720,
+        height: expect.any(Number),
         maxWidth: 660,
-        maxHeight: 720,
+        maxHeight: expect.any(Number),
         flippingTime: 650,
         autoSize: false,
         renderOnlyPageLengthChange: true,
@@ -288,6 +288,35 @@ describe('InteractivePdfFlipbook', () => {
     expect(screen.getByLabelText('Bìa trước: trang 1')).toHaveClass('interactive-reader__page--front-cover');
     expect(screen.getByLabelText('Bìa sau: trang 3')).toHaveClass('interactive-reader__page--back-cover');
     expect(screen.getByLabelText('Trang 2')).toHaveClass('interactive-reader__page');
+  });
+
+  it('sizes the pageflip parent to the available reader height in normal mode', async () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1200 });
+
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    const lastProps = receivedFlipBookProps.mock.calls.at(-1)?.[0] as {
+      height?: number;
+      maxHeight?: number;
+    };
+
+    expect(lastProps.height).toBeGreaterThan(720);
+    expect(lastProps.maxHeight).toBeGreaterThan(720);
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
   });
 
   it('shows a direct library back button in the reader header', async () => {
@@ -348,6 +377,56 @@ describe('InteractivePdfFlipbook', () => {
     expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
     expect(menuPanel.closest('.interactive-reader')).toBe(reader);
     expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+  });
+
+  it('anchors the reader menu to the hamburger bottom corner', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+
+    const menuToggle = screen.getByRole('button', { name: /mở menu điều khiển/i });
+    const shell = screen.getByLabelText('Trình đọc tương tác cho Demo book').querySelector(
+      '.interactive-reader__shell',
+    ) as HTMLElement;
+
+    vi.spyOn(menuToggle, 'getBoundingClientRect').mockReturnValue({
+      x: 1012,
+      y: 112,
+      width: 48,
+      height: 48,
+      top: 112,
+      right: 1060,
+      bottom: 160,
+      left: 1012,
+      toJSON: () => undefined,
+    });
+    vi.spyOn(shell, 'getBoundingClientRect').mockReturnValue({
+      x: 120,
+      y: 96,
+      width: 960,
+      height: 720,
+      top: 96,
+      right: 1080,
+      bottom: 816,
+      left: 120,
+      toJSON: () => undefined,
+    });
+
+    fireEvent.click(menuToggle);
+
+    const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
+
+    expect(menuPanel).toHaveStyle({
+      top: '64px',
+      left: '620px',
+    });
   });
 
   it('moves the reader menu into fullscreen content so it remains visible', async () => {
@@ -426,12 +505,14 @@ describe('InteractivePdfFlipbook', () => {
       expect(screen.getByRole('button', { name: /đóng menu điều khiển/i })).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole('button', { name: /hình thu nhỏ/i }));
+
     const shell = screen.getByLabelText('Trình đọc tương tác cho Demo book').querySelector(
       '.interactive-reader__shell',
     );
 
     expect(shell).toBeTruthy();
-    expect(shell).toContainElement(screen.getByLabelText('Menu điều khiển trình đọc'));
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
     expect(shell).toContainElement(screen.getByLabelText('Bảng hình thu nhỏ PDF').closest('.interactive-reader__thumbnails') ?? screen.getByLabelText('Bảng hình thu nhỏ PDF'));
   });
 
@@ -834,6 +915,7 @@ describe('InteractivePdfFlipbook', () => {
 
     const thumbnailPanel = screen.getByLabelText('Bảng hình thu nhỏ PDF');
     expect(thumbnailPanel).toBeInTheDocument();
+    expect(screen.queryByLabelText('Menu điều khiển trình đọc')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Hình thu nhỏ' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Đóng hình thu nhỏ' })).toHaveAttribute(
       'title',
@@ -1121,5 +1203,22 @@ describe('InteractivePdfFlipbook', () => {
     expect(documentRule).toBeDefined();
     expect(documentRule).toMatch(/overflow:\s*visible/);
     expect(documentRule).not.toMatch(/contain:\s*[^;]*paint/);
+  });
+
+  it('stretches the reader shell and PDF document through the remaining screen height', () => {
+    const appCss = readFileSync(join(process.cwd(), 'src/App.css'), 'utf8');
+    const readerRule = appCss.match(/\.interactive-reader\s*\{[^}]*\}/)?.[0];
+    const shellRule = appCss.match(/\.interactive-reader__shell\s*\{[^}]*\}/)?.[0];
+    const documentRule = appCss.match(/\.interactive-reader__document\s*\{[^}]*\}/)?.[0];
+
+    expect(readerRule).toBeDefined();
+    expect(readerRule).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/);
+    expect(shellRule).toBeDefined();
+    expect(shellRule).toMatch(/min-height:\s*0/);
+    expect(shellRule).toMatch(/height:\s*100%/);
+    expect(shellRule).toMatch(/display:\s*flex/);
+    expect(documentRule).toBeDefined();
+    expect(documentRule).toMatch(/width:\s*100%/);
+    expect(documentRule).toMatch(/height:\s*100%/);
   });
 });

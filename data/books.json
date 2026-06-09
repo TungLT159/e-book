@@ -31,5 +31,16 @@
     "chu_de": "Truyện ngắn, Văn học Việt Nam",
     "tu_khoa": ["phiêu lưu", "khám phá", "lòng đất", "cổ điển"],
     "is_favorite": true
+  },
+  {
+    "id": "book_004",
+    "ten_sach": "Truyện Cười Dân Gian Việt Nam",
+    "so_trang": 110,
+    "duong_dan_file": "/books/truyencuoidangianvietnam.pdf",
+    "thumbnail": "/thumbnails/truyencuoidangianvietnam.png",
+    "do_tuoi": "12+",
+    "chu_de": "Truyện ngắn, Văn học Việt Nam",
+    "tu_khoa": ["phiêu lưu", "khám phá", "lòng đất", "cổ điển"],
+    "is_favorite": true
   }
 ]

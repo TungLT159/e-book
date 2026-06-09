@@ -42,6 +42,9 @@ const FULLSCREEN_PDF_PAGE_WIDTH = 980;
 const FULLSCREEN_PDF_PAGE_HEIGHT = 840;
 const FULLSCREEN_PDF_MAX_WIDTH = 1200;
 const FULLSCREEN_PDF_MAX_HEIGHT = 960;
+const FULLSCREEN_HORIZONTAL_MARGIN = 96;
+const FULLSCREEN_VERTICAL_MARGIN = 180;
+const READER_VERTICAL_CHROME = 152;
 const FLIPPING_TIME = 650;
 const PAGE_FLIP_SOUND_PATH = "/Audio/effects/page-flip.mp3";
 const NARRATION_VOICE = "vi-VN-NamMinhNeural";
@@ -87,6 +90,11 @@ type EdgeTtsVoice = {
   FriendlyName?: string;
   Locale?: string;
   Name?: string;
+};
+
+type ViewportSize = {
+  width: number;
+  height: number;
 };
 
 type NarrationVoiceOption = {
@@ -345,6 +353,10 @@ export function InteractivePdfFlipbook({
   const [isTtsSettingsOpen, setIsTtsSettingsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewportSize, setViewportSize] = useState<ViewportSize>(() => ({
+    width: window.innerWidth || document.documentElement.clientWidth || 0,
+    height: window.innerHeight || document.documentElement.clientHeight || 0,
+  }));
   const [isAutoFlipEnabled, setIsAutoFlipEnabled] = useState(false);
   const [isThumbnailPanelOpen, setIsThumbnailPanelOpen] = useState(false);
   const [isNarrationEnabled, setIsNarrationEnabled] = useState(false);
@@ -381,10 +393,24 @@ export function InteractivePdfFlipbook({
   const resolvedPageFlipSoundPath =
     resolvePublicAssetPath(PAGE_FLIP_SOUND_PATH);
   const readerZoom = zoom * (isFullscreen ? FULLSCREEN_ZOOM_MULTIPLIER : 1);
+  const fullscreenAvailableWidth = Math.max(
+    FULLSCREEN_PDF_MAX_WIDTH,
+    viewportSize.width - FULLSCREEN_HORIZONTAL_MARGIN,
+  );
+  const fullscreenAvailableHeight = Math.max(
+    FULLSCREEN_PDF_MAX_HEIGHT,
+    viewportSize.height - FULLSCREEN_VERTICAL_MARGIN,
+  );
+  const normalAvailableHeight = Math.max(
+    PDF_PAGE_HEIGHT,
+    viewportSize.height - READER_VERTICAL_CHROME,
+  );
   const bookWidth = isFullscreen ? FULLSCREEN_PDF_PAGE_WIDTH : PDF_PAGE_WIDTH;
-  const bookHeight = isFullscreen ? FULLSCREEN_PDF_PAGE_HEIGHT : PDF_PAGE_HEIGHT;
-  const bookMaxWidth = isFullscreen ? FULLSCREEN_PDF_MAX_WIDTH : PDF_PAGE_WIDTH;
-  const bookMaxHeight = isFullscreen ? FULLSCREEN_PDF_MAX_HEIGHT : PDF_PAGE_HEIGHT;
+  const bookHeight = isFullscreen
+    ? Math.max(FULLSCREEN_PDF_PAGE_HEIGHT, fullscreenAvailableHeight)
+    : normalAvailableHeight;
+  const bookMaxWidth = isFullscreen ? fullscreenAvailableWidth : PDF_PAGE_WIDTH;
+  const bookMaxHeight = isFullscreen ? fullscreenAvailableHeight : normalAvailableHeight;
 
   const formatNarrationRate = useCallback((rate: number) => {
     if (rate === 0) return undefined;
@@ -662,7 +688,16 @@ export function InteractivePdfFlipbook({
   }, []);
 
   const toggleThumbnails = useCallback(() => {
-    setIsThumbnailPanelOpen((isOpen) => !isOpen);
+    setIsThumbnailPanelOpen((isOpen) => {
+      const nextIsOpen = !isOpen;
+
+      if (nextIsOpen) {
+        setIsMenuOpen(false);
+        setIsTtsSettingsOpen(false);
+      }
+
+      return nextIsOpen;
+    });
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -834,6 +869,24 @@ export function InteractivePdfFlipbook({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    const updateViewportSize = () => {
+      setViewportSize({
+        width: window.innerWidth || document.documentElement.clientWidth || 0,
+        height: window.innerHeight || document.documentElement.clientHeight || 0,
+      });
+    };
+
+    window.addEventListener("resize", updateViewportSize);
+    document.addEventListener("fullscreenchange", updateViewportSize);
+    updateViewportSize();
+
+    return () => {
+      window.removeEventListener("resize", updateViewportSize);
+      document.removeEventListener("fullscreenchange", updateViewportSize);
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const pageFlip = bookRef.current?.pageFlip();
 
@@ -856,16 +909,23 @@ export function InteractivePdfFlipbook({
       if (!toggleButton) return;
 
       const rect = toggleButton.getBoundingClientRect();
+      const shellRect = toggleButton
+        .closest(".interactive-reader")
+        ?.querySelector(".interactive-reader__shell")
+        ?.getBoundingClientRect();
       const width = 320;
-      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      const containerLeft = shellRect?.left ?? 0;
+      const containerTop = shellRect?.top ?? 0;
+      const containerWidth = shellRect?.width ?? (window.innerWidth || document.documentElement.clientWidth);
       const left = Math.max(
         8,
-        Math.min(rect.right - width, viewportWidth - width - 8),
+        Math.min(rect.right - containerLeft - width, containerWidth - width - 8),
       );
+      const top = Math.max(8, rect.bottom - containerTop);
 
-      // Keep the panel attached to the hamburger area while staying in the viewport.
-      menuPanelRef.current?.style.setProperty("top", `${Math.max(8, rect.bottom + window.scrollY + 8)}px`);
-      menuPanelRef.current?.style.setProperty("left", `${Math.max(8, left + window.scrollX)}px`);
+      // Keep the panel attached to the hamburger bottom edge in the shell's coordinate system.
+      menuPanelRef.current?.style.setProperty("top", `${top}px`);
+      menuPanelRef.current?.style.setProperty("left", `${left}px`);
     };
 
     updateMenuPosition();
@@ -999,11 +1059,21 @@ export function InteractivePdfFlipbook({
           return;
         }
 
-        setNarrationPageIndex(nextNarrationPageIndex);
-
-        if (!isPageVisibleInCurrentSpread(nextNarrationPageIndex)) {
-          flipToNextPage();
+        if (isPageVisibleInCurrentSpread(nextNarrationPageIndex)) {
+          setNarrationPageIndex(nextNarrationPageIndex);
+          return;
         }
+
+        flipToNextPage();
+        narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
+          narrationPagePauseTimeoutRef.current = null;
+
+          if (cancelled || requestId !== narrationRequestIdRef.current) {
+            return;
+          }
+
+          setNarrationPageIndex(nextNarrationPageIndex);
+        }, FLIPPING_TIME);
       }, NARRATION_PAGE_PAUSE_MS);
     };
 
