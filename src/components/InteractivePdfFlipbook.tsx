@@ -363,6 +363,7 @@ export function InteractivePdfFlipbook({
   const [narrationPageIndex, setNarrationPageIndex] = useState(0);
   const [isNarrationLoading, setIsNarrationLoading] = useState(false);
   const [isNarrationSynthesizing, setIsNarrationSynthesizing] = useState(false);
+  const [isNarrationPaused, setIsNarrationPaused] = useState(false);
   const [isVoiceLoading, setIsVoiceLoading] = useState(false);
   const [voiceOptions, setVoiceOptions] = useState<NarrationVoiceOption[]>([
     { value: NARRATION_VOICE, label: "Hoài My (vi-VN)" },
@@ -411,6 +412,7 @@ export function InteractivePdfFlipbook({
     : normalAvailableHeight;
   const bookMaxWidth = isFullscreen ? fullscreenAvailableWidth : PDF_PAGE_WIDTH;
   const bookMaxHeight = isFullscreen ? fullscreenAvailableHeight : normalAvailableHeight;
+  const isAutoReadPreparing = isNarrationLoading || isNarrationSynthesizing;
 
   const formatNarrationRate = useCallback((rate: number) => {
     if (rate === 0) return undefined;
@@ -459,6 +461,7 @@ export function InteractivePdfFlipbook({
       narrationBlobUrlRef.current = null;
     }
 
+    setIsNarrationPaused(false);
     setIsNarrationSynthesizing(false);
   }, []);
 
@@ -552,6 +555,7 @@ export function InteractivePdfFlipbook({
 
     if (isNarrationEnabled) {
       setIsNarrationEnabled(false);
+      setIsNarrationPaused(false);
       return;
     }
 
@@ -615,6 +619,27 @@ export function InteractivePdfFlipbook({
     pdfPath,
     title,
   ]);
+
+  const toggleNarrationPlayback = useCallback(() => {
+    const audio = narrationAudioRef.current;
+    if (!audio || isAutoReadPreparing) return;
+
+    if (isNarrationPaused) {
+      void audio
+        .play()
+        .then(() => {
+          setIsNarrationPaused(false);
+        })
+        .catch(() => {
+          setNarrationError("Không thể phát Edge TTS.");
+          setIsNarrationEnabled(false);
+        });
+      return;
+    }
+
+    audio.pause();
+    setIsNarrationPaused(true);
+  }, [isAutoReadPreparing, isNarrationPaused]);
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
@@ -1147,6 +1172,7 @@ export function InteractivePdfFlipbook({
           audio.src = cacheResult.audioUrl;
           audio.currentTime = 0;
           audio.load();
+          setIsNarrationPaused(false);
           await audio.play();
           preloadNextNarrationPage(
             narrationPageIndex,
@@ -1177,6 +1203,7 @@ export function InteractivePdfFlipbook({
         audio.src = url;
         audio.currentTime = 0;
         audio.load();
+        setIsNarrationPaused(false);
         await audio.play();
         preloadNextNarrationPage(
           narrationPageIndex,
@@ -1538,6 +1565,67 @@ export function InteractivePdfFlipbook({
           <p className="interactive-reader__message interactive-reader__message--error">
             {narrationError}
           </p>
+        )}
+
+        {isNarrationEnabled && (
+          <div className="interactive-reader__auto-read-bar">
+            {isAutoReadPreparing ? (
+              <div
+                className="interactive-reader__auto-read-loading"
+                role="status"
+                aria-label="Trạng thái đọc tự động"
+                aria-live="polite"
+              >
+                <span
+                  className="interactive-reader__auto-read-spinner"
+                  aria-hidden="true"
+                />
+                Đang tạo giọng đọc...
+              </div>
+            ) : (
+              <div
+                className="interactive-reader__auto-read-controls"
+                aria-label="Điều khiển đọc tự động"
+              >
+                <button
+                  type="button"
+                  className="interactive-reader__auto-read-button"
+                  onClick={() => undefined}
+                  disabled={narrationPageIndex <= 0}
+                  aria-label="Đọc trang trước"
+                  title="Đọc trang trước"
+                >
+                  <SkipBack aria-hidden="true" />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="interactive-reader__auto-read-button interactive-reader__auto-read-button--primary"
+                  onClick={toggleNarrationPlayback}
+                  aria-label={isNarrationPaused ? "Tiếp tục đọc" : "Tạm dừng đọc"}
+                  title={isNarrationPaused ? "Tiếp tục đọc" : "Tạm dừng đọc"}
+                >
+                  {isNarrationPaused ? (
+                    <Play aria-hidden="true" />
+                  ) : (
+                    <Pause aria-hidden="true" />
+                  )}
+                  {isNarrationPaused ? "Tiếp tục" : "Tạm dừng"}
+                </button>
+                <button
+                  type="button"
+                  className="interactive-reader__auto-read-button"
+                  onClick={() => undefined}
+                  disabled={!numPages || narrationPageIndex >= numPages - 1}
+                  aria-label="Đọc trang tiếp theo"
+                  title="Đọc trang tiếp theo"
+                >
+                  <SkipForward aria-hidden="true" />
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         <button

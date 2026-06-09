@@ -786,6 +786,104 @@ button {
   height: auto !important;
 }
 
+/* ───── Reader: Auto-read controls ───── */
+
+.interactive-reader__auto-read-bar {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  width: min(520px, calc(100% - 112px));
+  pointer-events: none;
+}
+
+.interactive-reader__auto-read-loading,
+.interactive-reader__auto-read-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px;
+  border-radius: 999px;
+  border: var(--glass-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-sm));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm));
+  box-shadow: var(--glass-shadow);
+  color: var(--color-text);
+  pointer-events: auto;
+}
+
+.interactive-reader__auto-read-loading {
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.interactive-reader__auto-read-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(24, 86, 255, 0.22);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.interactive-reader__auto-read-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.interactive-reader__auto-read-button svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2.2;
+}
+
+.interactive-reader__auto-read-button:hover:not(:disabled) {
+  background: rgba(24, 86, 255, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(24, 86, 255, 0.16);
+}
+
+.interactive-reader__auto-read-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.interactive-reader__auto-read-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.interactive-reader__auto-read-button--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.interactive-reader__auto-read-button--primary:hover:not(:disabled) {
+  background: #0f48df;
+  color: white;
+}
+
 /* ───── Reader: Document / Book area ───── */
 
 .interactive-reader__shell {
@@ -1457,6 +1555,19 @@ button {
     padding: 8px;
     overflow: hidden;
   }
+  .interactive-reader__auto-read-bar {
+    bottom: 14px;
+    width: min(100%, calc(100% - 72px));
+  }
+  .interactive-reader__auto-read-controls {
+    gap: 6px;
+    padding: 6px;
+  }
+  .interactive-reader__auto-read-button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+  }
   .toolbar__divider {
     display: none;
   }
@@ -1507,6 +1618,8 @@ button {
   .interactive-reader__menu-panel button,
   .interactive-reader__tts-submenu,
   .interactive-reader__thumbnails,
+  .interactive-reader__auto-read-spinner,
+  .interactive-reader__auto-read-button,
   .interactive-reader__thumbnails-header button,
   .interactive-reader__thumbnail,
   .interactive-reader__book,
