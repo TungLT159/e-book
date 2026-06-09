@@ -676,35 +676,45 @@ export function InteractivePdfFlipbook({
     [playPageFlipSound, setVisiblePage],
   );
 
+  const clearPendingNarrationPageChange = useCallback(() => {
+    if (narrationPagePauseTimeoutRef.current !== null) {
+      window.clearTimeout(narrationPagePauseTimeoutRef.current);
+      narrationPagePauseTimeoutRef.current = null;
+    }
+  }, []);
+
   const flipToPage = useCallback(
     (pageIndex: number) => {
       if (!numPages) return;
 
       const targetPageIndex = Math.min(Math.max(pageIndex, 0), numPages - 1);
+      clearPendingNarrationPageChange();
       bookRef.current?.pageFlip().flip(targetPageIndex);
       setVisiblePage(targetPageIndex);
       setIsThumbnailPanelOpen(false);
     },
-    [numPages, setVisiblePage],
+    [clearPendingNarrationPageChange, numPages, setVisiblePage],
   );
 
   const flipToPreviousPage = useCallback(() => {
     if (currentPageIndex <= 0) return;
 
+    clearPendingNarrationPageChange();
     bookRef.current?.pageFlip().flipPrev();
-  }, [currentPageIndex]);
+  }, [clearPendingNarrationPageChange, currentPageIndex]);
 
   const flipToNextPage = useCallback(() => {
     if (!numPages || currentPageIndexRef.current >= numPages - 1) return;
 
+    clearPendingNarrationPageChange();
     bookRef.current?.pageFlip().flipNext();
-  }, [numPages]);
+  }, [clearPendingNarrationPageChange, numPages]);
 
   const readNarrationPage = useCallback(
     (targetPageIndex: number) => {
       if (!numPages || targetPageIndex < 0 || targetPageIndex >= numPages) return;
 
-      narrationRequestIdRef.current += 1;
+      const requestId = ++narrationRequestIdRef.current;
       narrationPreloadRequestIdRef.current += 1;
 
       if (narrationPagePauseTimeoutRef.current !== null) {
@@ -734,14 +744,12 @@ export function InteractivePdfFlipbook({
         return;
       }
 
-      if (targetPageIndex < currentPageIndexRef.current) {
-        bookRef.current?.pageFlip().flipPrev();
-      } else {
-        bookRef.current?.pageFlip().flipNext();
-      }
+      bookRef.current?.pageFlip().flip(targetPageIndex);
 
       narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
         narrationPagePauseTimeoutRef.current = null;
+        if (requestId !== narrationRequestIdRef.current) return;
+
         setNarrationPageIndex(targetPageIndex);
       }, FLIPPING_TIME);
     },

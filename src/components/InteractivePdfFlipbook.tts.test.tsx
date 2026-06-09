@@ -11,7 +11,11 @@ const flipTo = vi.fn();
 const synthesize = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
 const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
 const readExtractedTextPage = vi.fn(async (_filePath: string, pageNumber: number): Promise<string> =>
-  pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
+  pageNumber === 1
+    ? 'Nội dung đọc từ file text trang một'
+    : pageNumber === 2
+      ? 'Nội dung đọc từ file text trang hai'
+      : `Nội dung đọc từ file text trang ${pageNumber}`,
 );
 const getVoices = vi.fn(async () => [
   { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
@@ -51,7 +55,7 @@ vi.mock('react-pdf', () => ({
   Document: ({ children, file, onLoadSuccess }: { children: React.ReactNode; file?: string; onLoadSuccess?: (pdf: { numPages: number }) => void }) => {
     React.useEffect(() => {
       if (file) {
-        onLoadSuccess?.({ numPages: 2 });
+        onLoadSuccess?.({ numPages: file.includes('multi-page-demo') ? 6 : 2 });
       }
     }, [file, onLoadSuccess]);
 
@@ -357,7 +361,7 @@ describe('InteractivePdfFlipbook narration', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /đọc trang tiếp theo/i }));
 
-    await waitFor(() => expect(flipNext).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(flipTo).toHaveBeenCalledWith(1));
     await waitFor(() =>
       expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
         voice: 'vi-VN-NamMinhNeural',
@@ -390,9 +394,43 @@ describe('InteractivePdfFlipbook narration', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /đọc trang trước/i }));
 
-    await waitFor(() => expect(flipPrev).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(flipTo).toHaveBeenCalledWith(0));
     await waitFor(() =>
       expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang một', {
+        voice: 'vi-VN-NamMinhNeural',
+      }),
+    );
+  });
+
+  it('directly flips to the next narration page when the visible page is far away', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/multi-page-demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^trang cuối$/i }));
+
+    await waitFor(() => expect(flipTo).toHaveBeenCalledWith(5));
+    await waitFor(() =>
+      expect(
+        screen.getByText((_content, element) =>
+          Boolean(element?.classList.contains('interactive-reader__status') && element.textContent === 'Trang 6 / 6'),
+        ),
+      ).toBeInTheDocument(),
+    );
+    flipTo.mockClear();
+
+    fireEvent.click(await screen.findByRole('button', { name: /đọc trang tiếp theo/i }));
+
+    await waitFor(() => expect(flipTo).toHaveBeenCalledWith(1));
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
         voice: 'vi-VN-NamMinhNeural',
       }),
     );
