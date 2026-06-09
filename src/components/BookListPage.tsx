@@ -1,5 +1,5 @@
-import { BookOpen, FileText } from 'lucide-react';
-import { useState } from 'react';
+import { BookOpen, FileText, Filter, Search, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { PdfBookState } from '../hooks/usePdfBookLoader';
 import { resolvePublicAssetPath } from '../utils/publicAsset';
 
@@ -9,7 +9,114 @@ type BookListPageProps = {
   onSelectBook: (bookId: string) => void;
 };
 
+type SearchFilters = {
+  query: string;
+  subject: string;
+  ageRange: string;
+  keyword: string;
+};
+
+type SearchOptions = {
+  subjects: string[];
+  ageRanges: string[];
+  keywords: string[];
+};
+
+type ScoredBook = {
+  book: PdfBookState;
+  score: number;
+  activeCriteria: number;
+  index: number;
+};
+
 const fallbackCoverColors: [string, string] = ['#2a5d6b', '#f4a261'];
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLocaleLowerCase('vi')
+    .trim();
+}
+
+function uniqueReadableValues(values: string[]) {
+  const seen = new Set<string>();
+
+  return values.reduce<string[]>((result, value) => {
+    const readableValue = value.trim();
+    const normalizedValue = normalizeSearchText(readableValue);
+    if (normalizedValue && !seen.has(normalizedValue)) {
+      seen.add(normalizedValue);
+      result.push(readableValue);
+    }
+    return result;
+  }, []);
+}
+
+function getBookSearchText(book: PdfBookState) {
+  return normalizeSearchText(
+    [book.config.title, book.config.subject, ...(book.config.keywords ?? [])].join(' '),
+  );
+}
+
+function getSearchOptions(books: PdfBookState[]): SearchOptions {
+  return {
+    subjects: uniqueReadableValues(books.map((book) => book.config.subject ?? '')),
+    ageRanges: uniqueReadableValues(books.map((book) => book.config.ageRange ?? '')),
+    keywords: uniqueReadableValues(books.flatMap((book) => book.config.keywords ?? [])),
+  };
+}
+
+function getSuggestions(books: PdfBookState[], query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) {
+    return [];
+  }
+  const values = uniqueReadableValues(
+    books.flatMap((book) => [
+      book.config.title,
+      book.config.subject ?? '',
+      ...(book.config.keywords ?? []),
+    ]),
+  );
+
+  return values.filter((value) => normalizeSearchText(value).includes(normalizedQuery));
+}
+
+function getBookMatchScore(book: PdfBookState, filters: SearchFilters, index: number): ScoredBook {
+  const normalizedFilters = {
+    query: normalizeSearchText(filters.query),
+    subject: normalizeSearchText(filters.subject),
+    ageRange: normalizeSearchText(filters.ageRange),
+    keyword: normalizeSearchText(filters.keyword),
+  };
+  const criteria = [
+    normalizedFilters.query
+      ? getBookSearchText(book).includes(normalizedFilters.query)
+      : null,
+    normalizedFilters.subject
+      ? normalizeSearchText(book.config.subject ?? '') === normalizedFilters.subject
+      : null,
+    normalizedFilters.ageRange
+      ? normalizeSearchText(book.config.ageRange ?? '') === normalizedFilters.ageRange
+      : null,
+    normalizedFilters.keyword
+      ? (book.config.keywords ?? []).some(
+          (keyword) => normalizeSearchText(keyword) === normalizedFilters.keyword,
+        )
+      : null,
+  ];
+  const activeMatches = criteria.filter((criterion): criterion is boolean => criterion !== null);
+
+  return {
+    book,
+    score: activeMatches.filter(Boolean).length,
+    activeCriteria: activeMatches.length,
+    index,
+  };
+}
 
 type BookCardProps = {
   book: PdfBookState;
@@ -55,6 +162,48 @@ function BookCard({ book, onSelectBook }: BookCardProps) {
 }
 
 export function BookListPage({ books, loading = false, onSelectBook }: BookListPageProps) {
+  const [query, setQuery] = useState('');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedAgeRange, setSelectedAgeRange] = useState('');
+  const [selectedKeyword, setSelectedKeyword] = useState('');
+  const normalizedQuery = normalizeSearchText(query);
+  const searchOptions = useMemo(() => getSearchOptions(books), [books]);
+  const suggestions = useMemo(() => getSuggestions(books, query), [books, query]);
+  const filters = useMemo<SearchFilters>(
+    () => ({
+      query,
+      subject: selectedSubject,
+      ageRange: selectedAgeRange,
+      keyword: selectedKeyword,
+    }),
+    [query, selectedSubject, selectedAgeRange, selectedKeyword],
+  );
+  const scoredBooks = useMemo(
+    () => books.map((book, index) => getBookMatchScore(book, filters, index)),
+    [books, filters],
+  );
+  const hasActiveCriteria = scoredBooks.some(({ activeCriteria }) => activeCriteria > 0);
+  const primaryBooks = useMemo(
+    () => scoredBooks.filter(({ score, activeCriteria }) => score === activeCriteria).map(({ book }) => book),
+    [scoredBooks],
+  );
+  const relatedBooks = useMemo(
+    () =>
+      scoredBooks
+        .filter(({ score, activeCriteria }) => activeCriteria > 0 && score > 0 && score < activeCriteria)
+        .sort((left, right) => right.score - left.score || left.index - right.index)
+        .map(({ book }) => book),
+    [scoredBooks],
+  );
+
+  function clearSearch() {
+    setQuery('');
+    setSelectedSubject('');
+    setSelectedAgeRange('');
+    setSelectedKeyword('');
+  }
+
   return (
     <main className="book-list-page">
       <header className="book-list-page__header">
@@ -68,11 +217,136 @@ export function BookListPage({ books, loading = false, onSelectBook }: BookListP
       ) : books.length === 0 ? (
         <p className="book-list-page__empty">Chưa có sách nào.</p>
       ) : (
-        <div className="book-list-page__grid">
-          {books.map((book) => (
-            <BookCard key={book.config.id} book={book} onSelectBook={onSelectBook} />
-          ))}
-        </div>
+        <>
+          <div className="book-list-page__discovery">
+            <div className="book-list-page__search-bar">
+              <label className="book-list-page__search-label">
+                <span className="book-list-page__search-label-text">Tìm sách</span>
+                <Search className="book-list-page__search-icon" aria-hidden="true" />
+                <input
+                  className="book-list-page__search-input"
+                  type="search"
+                  value={query}
+                  placeholder="Tìm theo tên sách, chủ đề, từ khóa..."
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <button
+                className="book-list-page__search-action book-list-page__search-action--filter"
+                type="button"
+                aria-label={isFilterPanelOpen ? 'Đóng bộ lọc' : 'Mở bộ lọc'}
+                aria-expanded={isFilterPanelOpen}
+                aria-controls="book-list-filters"
+                onClick={() => setIsFilterPanelOpen((isOpen) => !isOpen)}
+              >
+                <Filter className="book-list-page__control-icon" aria-hidden="true" />
+              </button>
+              {normalizedQuery || selectedSubject || selectedAgeRange || selectedKeyword ? (
+                <button
+                  className="book-list-page__search-action book-list-page__search-action--clear"
+                  type="button"
+                  aria-label="Xóa tìm kiếm và bộ lọc"
+                  onClick={clearSearch}
+                >
+                  <X className="book-list-page__control-icon" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+
+            {suggestions.length > 0 ? (
+              <div className="book-list-page__suggestions" aria-label="Gợi ý tìm kiếm">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={normalizeSearchText(suggestion)}
+                    className="book-list-page__suggestion"
+                    type="button"
+                    aria-label={`Tìm theo gợi ý: ${suggestion}`}
+                    onClick={() => setQuery(suggestion)}
+                  >
+                    <Search className="book-list-page__control-icon" aria-hidden="true" />
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {isFilterPanelOpen ? (
+              <div id="book-list-filters" className="book-list-page__filters">
+                <label className="book-list-page__filter-field">
+                  Chủ đề
+                  <select
+                    className="book-list-page__filter-select"
+                    value={selectedSubject}
+                    onChange={(event) => setSelectedSubject(event.target.value)}
+                  >
+                    <option value="">Tất cả chủ đề</option>
+                    {searchOptions.subjects.map((subject) => (
+                      <option key={normalizeSearchText(subject)} value={subject}>{subject}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="book-list-page__filter-field">
+                  Độ tuổi
+                  <select
+                    className="book-list-page__filter-select"
+                    value={selectedAgeRange}
+                    onChange={(event) => setSelectedAgeRange(event.target.value)}
+                  >
+                    <option value="">Tất cả độ tuổi</option>
+                    {searchOptions.ageRanges.map((ageRange) => (
+                      <option key={normalizeSearchText(ageRange)} value={ageRange}>{ageRange}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="book-list-page__filter-field">
+                  Từ khóa
+                  <select
+                    className="book-list-page__filter-select"
+                    value={selectedKeyword}
+                    onChange={(event) => setSelectedKeyword(event.target.value)}
+                  >
+                    <option value="">Tất cả từ khóa</option>
+                    {searchOptions.keywords.map((keyword) => (
+                      <option key={normalizeSearchText(keyword)} value={keyword}>{keyword}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+          </div>
+
+          <section className="book-list-page__results" aria-label="Kết quả phù hợp">
+            {primaryBooks.length > 0 ? (
+              <div className="book-list-page__grid">
+                {primaryBooks.map((book) => (
+                  <BookCard key={book.config.id} book={book} onSelectBook={onSelectBook} />
+                ))}
+              </div>
+            ) : relatedBooks.length > 0 ? (
+              <p className="book-list-page__empty book-list-page__search-empty book-list-page__search-empty--partial book-list-page__search-empty-message">
+                Không tìm thấy sách khớp tất cả bộ lọc.
+              </p>
+            ) : (
+              <div className="book-list-page__empty book-list-page__search-empty">
+                <p className="book-list-page__search-empty-message">Không tìm thấy sách phù hợp.</p>
+                <button className="book-list-page__empty-action" type="button" onClick={clearSearch}>
+                  Xóa tìm kiếm và bộ lọc
+                </button>
+              </div>
+            )}
+          </section>
+
+          {hasActiveCriteria && relatedBooks.length > 0 ? (
+            <section className="book-list-page__related" aria-labelledby="related-results-heading">
+              <h2 className="book-list-page__related-heading" id="related-results-heading">Kết quả liên quan</h2>
+              <div className="book-list-page__grid">
+                {relatedBooks.map((book) => (
+                  <BookCard key={book.config.id} book={book} onSelectBook={onSelectBook} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
       )}
     </main>
   );
