@@ -415,6 +415,35 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(synthesize).toHaveBeenCalledTimes(1);
   });
 
+  it('clears paused narration state when resuming playback fails', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /tạm dừng đọc/i }));
+    play.mockRejectedValueOnce(new Error('resume failed'));
+    fireEvent.click(screen.getByRole('button', { name: /tiếp tục đọc/i }));
+
+    expect(await screen.findByText('Không thể phát Edge TTS.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /đọc tự động/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tiếp tục đọc/i })).not.toBeInTheDocument();
+
+    const narrationAudio = screen.getByLabelText('Âm thanh đọc văn bản');
+    vi.useFakeTimers();
+    fireEvent.ended(narrationAudio);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(flipTo).toHaveBeenCalledWith(1);
+  });
+
   it('clears paused narration state after an audio error disables auto-read', async () => {
     render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
 

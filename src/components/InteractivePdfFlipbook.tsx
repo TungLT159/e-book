@@ -638,6 +638,8 @@ export function InteractivePdfFlipbook({
         })
         .catch(() => {
           setNarrationError("Không thể phát Edge TTS.");
+          isNarrationPausedRef.current = false;
+          setIsNarrationPaused(false);
           setIsNarrationEnabled(false);
         });
       return;
