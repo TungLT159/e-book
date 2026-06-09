@@ -561,7 +561,9 @@ export function InteractivePdfFlipbook({
     setNarrationError(null);
 
     if (isNarrationEnabled) {
+      narrationPlaybackOperationIdRef.current += 1;
       setIsNarrationEnabled(false);
+      isNarrationPausedRef.current = false;
       setIsNarrationPaused(false);
       return;
     }

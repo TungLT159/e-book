@@ -474,6 +474,34 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
   });
 
+  it('ignores a pending resume rejection after narration stops', async () => {
+    let rejectResume!: (reason?: unknown) => void;
+    const deferredResume = new Promise<void>((_resolve, reject) => {
+      rejectResume = reject;
+    });
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /tạm dừng đọc/i }));
+    play.mockReturnValueOnce(deferredResume);
+    fireEvent.click(screen.getByRole('button', { name: /tiếp tục đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^dừng đọc$/i }));
+
+    await act(async () => {
+      rejectResume(new Error('stale resume failed'));
+      await deferredResume.catch(() => undefined);
+    });
+
+    expect(screen.queryByText('Không thể phát Edge TTS.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: /trạng thái đọc tự động/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /đọc tự động/i })).toBeInTheDocument();
+  });
+
   it('clears paused narration state after an audio error disables auto-read', async () => {
     render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
 
