@@ -1094,6 +1094,8 @@ export function InteractivePdfFlipbook({
       }
 
       if (narrationPageIndex >= numPages - 1) {
+        isNarrationPausedRef.current = false;
+        setIsNarrationPaused(false);
         setIsNarrationEnabled(false);
         setIsNarrationLoading(true);
         setPageNarrationTexts([]);
@@ -1174,6 +1176,8 @@ export function InteractivePdfFlipbook({
       }
 
       setNarrationError("Không thể phát Edge TTS.");
+      isNarrationPausedRef.current = false;
+      setIsNarrationPaused(false);
       setIsNarrationEnabled(false);
     };
 
@@ -1286,6 +1290,8 @@ export function InteractivePdfFlipbook({
             ? error.message
             : "Không thể đọc văn bản bằng Edge TTS.",
         );
+        isNarrationPausedRef.current = false;
+        setIsNarrationPaused(false);
         setIsNarrationEnabled(false);
       } finally {
         if (!cancelled && requestId === narrationRequestIdRef.current) {

@@ -415,6 +415,34 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(synthesize).toHaveBeenCalledTimes(1);
   });
 
+  it('clears paused narration state after an audio error disables auto-read', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /tạm dừng đọc/i }));
+
+    const narrationAudio = screen.getByLabelText('Âm thanh đọc văn bản');
+    fireEvent.error(narrationAudio);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /đọc tự động/i })).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    vi.useFakeTimers();
+    fireEvent.ended(narrationAudio);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(flipTo).toHaveBeenCalledWith(1);
+  });
+
   it('reads the next page when Next is clicked in the auto-read bar', async () => {
     render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
 
