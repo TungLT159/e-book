@@ -16,6 +16,8 @@ const getVoices = vi.fn(async () => [
   { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
 ]);
 const play = vi.fn(() => Promise.resolve());
+const pause = vi.fn();
+const load = vi.fn();
 
 vi.mock('react-pageflip', () => ({
   default: React.forwardRef(
@@ -79,6 +81,16 @@ describe('InteractivePdfFlipbook narration', () => {
     Object.defineProperty(window.HTMLMediaElement.prototype, 'play', {
       configurable: true,
       value: play,
+    });
+    pause.mockClear();
+    load.mockClear();
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      value: pause,
+    });
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'load', {
+      configurable: true,
+      value: load,
     });
     window.edgeTts = { synthesize, getVoices };
     window.debugTools = { writeExtractedText, readExtractedTextPage };
@@ -227,6 +239,36 @@ describe('InteractivePdfFlipbook narration', () => {
     await waitFor(() =>
       expect(screen.queryByText('Đang tạo giọng đọc...')).not.toBeInTheDocument(),
     );
+  });
+
+  it('shows the auto-read bar as loading first, then playback controls after audio starts', async () => {
+    let resolveSynthesize: (audio: ArrayBuffer) => void = () => undefined;
+    synthesize.mockImplementationOnce(
+      () => new Promise<ArrayBuffer>((resolve) => {
+        resolveSynthesize = resolve;
+      }),
+    );
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    expect(await screen.findByRole('status', { name: /trạng thái đọc tự động/i })).toHaveTextContent(
+      'Đang tạo giọng đọc...',
+    );
+    expect(screen.queryByRole('button', { name: /tạm dừng đọc/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSynthesize(new Uint8Array([1, 2, 3]).buffer);
+    });
+
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /đọc trang tiếp theo/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /đọc trang trước/i })).toBeDisabled();
+    expect(screen.queryByText('Đang tạo giọng đọc...')).not.toBeInTheDocument();
   });
 
   it('removes invalid surrogate characters before narration', () => {
