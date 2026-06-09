@@ -386,6 +386,7 @@ export function InteractivePdfFlipbook({
   const narrationPlaybackOperationIdRef = useRef(0);
   const narrationPreloadRequestIdRef = useRef(0);
   const narrationPagePauseTimeoutRef = useRef<number | null>(null);
+  const pendingNarrationPageIndexRef = useRef<number | null>(null);
   const isNarrationPausedRef = useRef(false);
   const narrationOperationIdRef = useRef(0);
   const extractedTextDebugFilePromiseRef = useRef<Promise<string> | null>(null);
@@ -450,6 +451,7 @@ export function InteractivePdfFlipbook({
     narrationRequestIdRef.current += 1;
     narrationPlaybackOperationIdRef.current += 1;
     narrationPreloadRequestIdRef.current += 1;
+    pendingNarrationPageIndexRef.current = null;
 
     if (narrationPagePauseTimeoutRef.current !== null) {
       window.clearTimeout(narrationPagePauseTimeoutRef.current);
@@ -570,6 +572,7 @@ export function InteractivePdfFlipbook({
 
     void (async () => {
       const operationId = ++narrationOperationIdRef.current;
+      setIsNarrationEnabled(true);
       setIsNarrationLoading(true);
 
       try {
@@ -602,6 +605,7 @@ export function InteractivePdfFlipbook({
           throw new Error("Không thể tạo file văn bản đã định dạng.");
         }
 
+        setIsNarrationSynthesizing(true);
         setNarrationPageIndex(currentPageIndex);
         setIsNarrationEnabled(true);
       } catch (error) {
@@ -629,11 +633,55 @@ export function InteractivePdfFlipbook({
     title,
   ]);
 
+  const continuePendingNarrationTransition = useCallback(
+    (targetPageIndex: number, requestId: number) => {
+      narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
+        narrationPagePauseTimeoutRef.current = null;
+        if (
+          requestId !== narrationRequestIdRef.current ||
+          isNarrationPausedRef.current ||
+          pendingNarrationPageIndexRef.current !== targetPageIndex
+        ) return;
+
+        if (isPageVisibleInCurrentSpread(targetPageIndex)) {
+          pendingNarrationPageIndexRef.current = null;
+          setNarrationPageIndex(targetPageIndex);
+          return;
+        }
+
+        bookRef.current?.pageFlip().flip(targetPageIndex);
+        narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
+          narrationPagePauseTimeoutRef.current = null;
+          if (
+            requestId !== narrationRequestIdRef.current ||
+            isNarrationPausedRef.current ||
+            pendingNarrationPageIndexRef.current !== targetPageIndex
+          ) return;
+
+          pendingNarrationPageIndexRef.current = null;
+          setNarrationPageIndex(targetPageIndex);
+        }, FLIPPING_TIME);
+      }, NARRATION_PAGE_PAUSE_MS);
+    },
+    [isPageVisibleInCurrentSpread],
+  );
+
   const toggleNarrationPlayback = useCallback(() => {
     const audio = narrationAudioRef.current;
     if (!audio || isAutoReadPreparing) return;
 
     if (isNarrationPaused) {
+      const pendingPageIndex = pendingNarrationPageIndexRef.current;
+      if (pendingPageIndex !== null) {
+        isNarrationPausedRef.current = false;
+        setIsNarrationPaused(false);
+        continuePendingNarrationTransition(
+          pendingPageIndex,
+          narrationRequestIdRef.current,
+        );
+        return;
+      }
+
       const playbackOperationId = ++narrationPlaybackOperationIdRef.current;
       void audio
         .play()
@@ -660,7 +708,7 @@ export function InteractivePdfFlipbook({
     audio.pause();
     isNarrationPausedRef.current = true;
     setIsNarrationPaused(true);
-  }, [isAutoReadPreparing, isNarrationPaused]);
+  }, [continuePendingNarrationTransition, isAutoReadPreparing, isNarrationPaused]);
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
@@ -716,6 +764,7 @@ export function InteractivePdfFlipbook({
       const requestId = ++narrationRequestIdRef.current;
       narrationPlaybackOperationIdRef.current += 1;
       narrationPreloadRequestIdRef.current += 1;
+      pendingNarrationPageIndexRef.current = null;
 
       if (narrationPagePauseTimeoutRef.current !== null) {
         window.clearTimeout(narrationPagePauseTimeoutRef.current);
@@ -1104,6 +1153,7 @@ export function InteractivePdfFlipbook({
       }
 
       if (narrationPageIndex >= numPages - 1) {
+        pendingNarrationPageIndexRef.current = null;
         isNarrationPausedRef.current = false;
         setIsNarrationPaused(false);
         setIsNarrationEnabled(false);
@@ -1143,41 +1193,11 @@ export function InteractivePdfFlipbook({
       }
 
       const nextNarrationPageIndex = narrationPageIndex + 1;
+      pendingNarrationPageIndexRef.current = nextNarrationPageIndex;
       if (narrationPagePauseTimeoutRef.current !== null) {
         window.clearTimeout(narrationPagePauseTimeoutRef.current);
       }
-
-      narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
-        narrationPagePauseTimeoutRef.current = null;
-
-        if (cancelled || requestId !== narrationRequestIdRef.current) {
-          return;
-        }
-
-        if (isNarrationPausedRef.current) {
-          return;
-        }
-
-        if (isPageVisibleInCurrentSpread(nextNarrationPageIndex)) {
-          setNarrationPageIndex(nextNarrationPageIndex);
-          return;
-        }
-
-        bookRef.current?.pageFlip().flip(nextNarrationPageIndex);
-        narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
-          narrationPagePauseTimeoutRef.current = null;
-
-          if (cancelled || requestId !== narrationRequestIdRef.current) {
-            return;
-          }
-
-          if (isNarrationPausedRef.current) {
-            return;
-          }
-
-          setNarrationPageIndex(nextNarrationPageIndex);
-        }, FLIPPING_TIME);
-      }, NARRATION_PAGE_PAUSE_MS);
+      continuePendingNarrationTransition(nextNarrationPageIndex, requestId);
     };
 
     const handleError = () => {
@@ -1186,6 +1206,7 @@ export function InteractivePdfFlipbook({
       }
 
       setNarrationError("Không thể phát Edge TTS.");
+      pendingNarrationPageIndexRef.current = null;
       isNarrationPausedRef.current = false;
       setIsNarrationPaused(false);
       setIsNarrationEnabled(false);
@@ -1302,6 +1323,7 @@ export function InteractivePdfFlipbook({
             ? error.message
             : "Không thể đọc văn bản bằng Edge TTS.",
         );
+        pendingNarrationPageIndexRef.current = null;
         isNarrationPausedRef.current = false;
         setIsNarrationPaused(false);
         setIsNarrationEnabled(false);
@@ -1322,7 +1344,7 @@ export function InteractivePdfFlipbook({
       setIsNarrationSynthesizing(false);
     };
   }, [
-    isPageVisibleInCurrentSpread,
+    continuePendingNarrationTransition,
     isNarrationEnabled,
     isNarrationLoading,
     narrationError,
@@ -1668,6 +1690,7 @@ export function InteractivePdfFlipbook({
             ) : (
               <div
                 className="interactive-reader__auto-read-controls"
+                role="group"
                 aria-label="Điều khiển đọc tự động"
               >
                 <button

@@ -257,7 +257,31 @@ describe('InteractivePdfFlipbook narration', () => {
     );
   });
 
-  it('keeps auto-read paused during the inter-page delay', async () => {
+  it('shows the loading bar while extracted text is still being prepared', async () => {
+    let resolveWrite!: (path: string) => void;
+    writeExtractedText.mockReturnValueOnce(new Promise<string>((resolve) => {
+      resolveWrite = resolve;
+    }));
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    expect(screen.getByRole('status', { name: /trạng thái đọc tự động/i })).toHaveTextContent(
+      'Đang tạo giọng đọc...',
+    );
+    expect(synthesize).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveWrite('C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
+    });
+
+    await waitFor(() => expect(synthesize).toHaveBeenCalledTimes(1));
+  });
+
+  it('resumes the pending page transition after pausing during the inter-page delay', async () => {
     render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
 
     expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
@@ -287,10 +311,17 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(synthesize).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: /tiếp tục đọc/i }));
-
+    expect(play).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 + 650);
+    });
     await act(async () => undefined);
 
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(flipTo).toHaveBeenCalledWith(1);
+    expect(synthesize).toHaveBeenLastCalledWith('Nội dung đọc từ file text trang hai', {
+      voice: 'vi-VN-NamMinhNeural',
+    });
+    expect(synthesize).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 
