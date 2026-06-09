@@ -115,6 +115,31 @@ describe('InteractivePdfFlipbook narration', () => {
     });
   });
 
+
+  it('does not restart narration when the visible page updates during playback', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', { voice: 'vi-VN-NamMinhNeural' }),
+    );
+
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByRole('button', { name: /trang tiếp theo/i }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(650);
+    });
+    await act(async () => undefined);
+
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
   it('lets the user choose narration voice and speed', async () => {
     render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
 

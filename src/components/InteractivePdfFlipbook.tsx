@@ -365,6 +365,7 @@ export function InteractivePdfFlipbook({
   const bookRef = useRef<PageFlipRef | null>(null);
   const pageFlipAudioRef = useRef<HTMLAudioElement | null>(null);
   const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentPageIndexRef = useRef(0);
   const lastSyncedPageRef = useRef(1);
   const flipSettledTimeoutRef = useRef<number | null>(null);
   const narrationBlobUrlRef = useRef<string | null>(null);
@@ -392,11 +393,15 @@ export function InteractivePdfFlipbook({
 
   const isPageVisibleInCurrentSpread = useCallback(
     (pageIndex: number) => {
-      if (pageIndex === currentPageIndex) return true;
+      const currentVisiblePageIndex = currentPageIndexRef.current;
 
-      return currentPageIndex > 0 && pageIndex === currentPageIndex + 1;
+      if (pageIndex === currentVisiblePageIndex) return true;
+
+      return (
+        currentVisiblePageIndex > 0 && pageIndex === currentVisiblePageIndex + 1
+      );
     },
-    [currentPageIndex],
+    [],
   );
 
   const playPageFlipSound = useCallback(() => {
@@ -587,6 +592,7 @@ export function InteractivePdfFlipbook({
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
+    currentPageIndexRef.current = pageIndex;
     lastSyncedPageRef.current = nextPage;
     setCurrentPageIndex(pageIndex);
   }, []);
@@ -626,10 +632,10 @@ export function InteractivePdfFlipbook({
   }, [currentPageIndex]);
 
   const flipToNextPage = useCallback(() => {
-    if (!numPages || currentPageIndex >= numPages - 1) return;
+    if (!numPages || currentPageIndexRef.current >= numPages - 1) return;
 
     bookRef.current?.pageFlip().flipNext();
-  }, [currentPageIndex, numPages]);
+  }, [numPages]);
 
   const changeZoom = useCallback((direction: 1 | -1) => {
     setZoom((currentZoom) => {
@@ -698,6 +704,7 @@ export function InteractivePdfFlipbook({
     }
 
     lastSyncedPageRef.current = 1;
+    currentPageIndexRef.current = 0;
     setCurrentPageIndex(0);
 
     return () => {
