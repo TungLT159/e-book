@@ -1,5 +1,19 @@
 export {};
 
+export type ReadingProgressRecord = {
+  bookId: string;
+  lastPageIndex: number;
+  progressPercent: number;
+  completed: boolean;
+  lastOpenedAt: string;
+};
+
+export type ReadingProgressStore = {
+  version: 1;
+  updatedAt: string;
+  books: Record<string, ReadingProgressRecord>;
+};
+
 declare global {
   interface Window {
     edgeTts?: {
@@ -26,6 +40,11 @@ declare global {
         chunkIndex: number;
         chunkText: string;
       }) => Promise<{ audioPath: string; audioUrl?: string; cacheHit: boolean }>;
+    };
+    readingProgress?: {
+      getAll: () => Promise<ReadingProgressStore>;
+      save: (payload: ReadingProgressRecord) => Promise<ReadingProgressStore>;
+      delete: (bookId: string) => Promise<ReadingProgressStore>;
     };
     debugTools?: {
       writeExtractedText?: (payload: {

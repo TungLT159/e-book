@@ -21,6 +21,10 @@ npm run build
 npm run electron:prod
 ```
 
+### Reading Progress
+
+Reading progress is stored locally on this device. It includes the last page, percentage read, completion status, and last-opened time. Reopening a book resumes from the saved page. Progress is not synced to the cloud or across devices.
+
 ## Build
 
 ```bash

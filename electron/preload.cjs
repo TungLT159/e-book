@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('audioCache', {
     ipcRenderer.invoke('audio-cache:prepare-edge-tts-audio-cache-file', payload),
 });
 
+contextBridge.exposeInMainWorld('readingProgress', {
+  getAll: () => ipcRenderer.invoke('reading-progress:get-all'),
+  save: (payload) => ipcRenderer.invoke('reading-progress:save', payload),
+  delete: (bookId) => ipcRenderer.invoke('reading-progress:delete', bookId),
+});
+
 contextBridge.exposeInMainWorld('debugTools', {
   writeExtractedText: (payload) => ipcRenderer.invoke('debug:write-extracted-text', payload),
   readExtractedTextPage: (filePath, pageNumber) =>

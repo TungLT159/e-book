@@ -10,6 +10,7 @@ import {
   InteractivePdfFlipbook,
   resolvePublicAssetPath,
 } from './InteractivePdfFlipbook';
+import type { ReadingProgressRecord } from '../types/electron';
 
 const flip = vi.fn();
 const flipNext = vi.fn();
@@ -20,6 +21,8 @@ const receivedFlipBookProps = vi.fn();
 const receivedPageProps = vi.fn();
 const pageFlipMounted = vi.fn();
 const pageFlipUnmounted = vi.fn();
+let mockNumPages = 3;
+let suppressFlipEventForPageZero = false;
 const getDocument = vi.hoisted(() =>
   vi.fn(() => ({
     promise: Promise.resolve({
@@ -56,7 +59,9 @@ vi.mock('react-pageflip', () => ({
         pageFlip: () => ({
           flip: (pageIndex: number) => {
             flip(pageIndex);
-            onFlip?.({ data: pageIndex });
+            if (!(suppressFlipEventForPageZero && pageIndex === 0)) {
+              onFlip?.({ data: pageIndex });
+            }
           },
           flipNext: () => {
             flipNext();
@@ -106,7 +111,7 @@ vi.mock('react-pdf', () => ({
         onLoadError?.(new Error('Missing PDF'));
         return;
       }
-      onLoadSuccess?.({ numPages: 3 });
+      onLoadSuccess?.({ numPages: mockNumPages });
     }, [file, onLoadError, onLoadSuccess]);
 
     if (file?.includes('missing')) {
@@ -208,6 +213,8 @@ describe('InteractivePdfFlipbook', () => {
     receivedPageProps.mockClear();
     pageFlipMounted.mockClear();
     pageFlipUnmounted.mockClear();
+    mockNumPages = 3;
+    suppressFlipEventForPageZero = false;
   });
 
   afterEach(() => {
@@ -588,6 +595,506 @@ describe('InteractivePdfFlipbook', () => {
     });
 
     expect(screen.getByText('Trang 3 / 3')).toBeInTheDocument();
+  });
+
+  it('restores valid saved progress once after the PDF loads', async () => {
+    const savedProgress: ReadingProgressRecord = {
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const { rerender } = render(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" savedProgress={savedProgress} />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    expect(screen.getByText('Trang 2 / 3')).toBeInTheDocument();
+
+    rerender(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" savedProgress={savedProgress} />,
+    );
+    expect(flip).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores progress that arrives after the PDF has already loaded', async () => {
+    const savedProgress: ReadingProgressRecord = {
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const { rerender } = render(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" savedProgress={null} />,
+    );
+
+    await screen.findByText('PDF page 1');
+    expect(flip).not.toHaveBeenCalled();
+
+    rerender(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" savedProgress={savedProgress} />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    expect(flip).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Trang 2 / 3')).toBeInTheDocument();
+
+    rerender(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" savedProgress={savedProgress} />,
+    );
+    expect(flip).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconsiders restoration when switching to a PDF with the same page count', async () => {
+    const savedProgress: ReadingProgressRecord = {
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const { rerender } = render(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/old.pdf" savedProgress={savedProgress} />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    flip.mockClear();
+
+    rerender(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/new.pdf" savedProgress={savedProgress} />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    expect(flip).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits restored progress once without duplicating the restoration flip event', async () => {
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        savedProgress={{
+          bookId: 'demo-book',
+          lastPageIndex: 1,
+          progressPercent: 67,
+          completed: false,
+          lastOpenedAt: '2026-01-01T00:00:00.000Z',
+        }}
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalledTimes(1));
+    expect(onProgressChange).toHaveBeenCalledWith({
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+  });
+
+  it('emits page zero once when opening a book without saved progress', async () => {
+    const onProgressChange = vi.fn();
+    const { rerender } = render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalledTimes(1));
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'demo-book',
+      lastPageIndex: 0,
+      progressPercent: 33,
+      completed: false,
+    }));
+
+    rerender(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        onProgressChange={onProgressChange}
+      />,
+    );
+    expect(onProgressChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits page zero once progress loading finishes and no saved data exists', async () => {
+    const onProgressChange = vi.fn();
+    const { rerender } = render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        savedProgress={null}
+        isReadingProgressLoaded={false}
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+    expect(onProgressChange).toHaveBeenCalledTimes(0);
+
+    rerender(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        savedProgress={null}
+        isReadingProgressLoaded={true}
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalledTimes(1));
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'demo-book',
+      lastPageIndex: 0,
+    }));
+
+    rerender(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        savedProgress={null}
+        isReadingProgressLoaded={true}
+        onProgressChange={onProgressChange}
+      />,
+    );
+    expect(onProgressChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits completed progress when opening a one-page book', async () => {
+    mockNumPages = 1;
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook
+        title="Short book"
+        pdfPath="/books/short.pdf"
+        bookId="short-book"
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalledTimes(1));
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'short-book',
+      lastPageIndex: 0,
+      progressPercent: 100,
+      completed: true,
+    }));
+  });
+
+  it('restores asynchronously arriving progress and emits each settled state once', async () => {
+    const onProgressChange = vi.fn();
+    const { rerender } = render(
+      <React.StrictMode>
+        <InteractivePdfFlipbook
+          title="Demo book"
+          pdfPath="/books/demo.pdf"
+          bookId="demo-book"
+          savedProgress={null}
+          isReadingProgressLoaded={false}
+          onProgressChange={onProgressChange}
+        />
+      </React.StrictMode>,
+    );
+
+    await screen.findByText('PDF page 1');
+    expect(onProgressChange).toHaveBeenCalledTimes(0);
+
+    const savedProgress: ReadingProgressRecord = {
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rerender(
+      <React.StrictMode>
+        <InteractivePdfFlipbook
+          title="Demo book"
+          pdfPath="/books/demo.pdf"
+          bookId="demo-book"
+          savedProgress={savedProgress}
+          isReadingProgressLoaded={true}
+          onProgressChange={onProgressChange}
+        />
+      </React.StrictMode>,
+    );
+
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalledTimes(1));
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+    }));
+
+    rerender(
+      <React.StrictMode>
+        <InteractivePdfFlipbook
+          title="Demo book"
+          pdfPath="/books/demo.pdf"
+          bookId="demo-book"
+          savedProgress={savedProgress}
+          isReadingProgressLoaded={true}
+          onProgressChange={onProgressChange}
+        />
+      </React.StrictMode>,
+    );
+    expect(onProgressChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles the first user flip after restoring progress already on page zero', async () => {
+    suppressFlipEventForPageZero = true;
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        savedProgress={{
+          bookId: 'demo-book',
+          lastPageIndex: 0,
+          progressPercent: 33,
+          completed: false,
+          lastOpenedAt: '2026-01-01T00:00:00.000Z',
+        }}
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(screen.getByText('Trang 2 / 3')).toBeInTheDocument();
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+    }));
+  });
+
+  it('ignores another book saved record and emits only under the active book id', async () => {
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook
+        title="Shared book"
+        pdfPath="/books/shared.pdf"
+        bookId="book-b"
+        savedProgress={{
+          bookId: 'book-a',
+          lastPageIndex: 2,
+          progressPercent: 100,
+          completed: true,
+          lastOpenedAt: '2026-01-01T00:00:00.000Z',
+        }}
+        onProgressChange={onProgressChange}
+      />,
+    );
+
+    await screen.findByText('PDF page 1');
+    expect(flip).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'book-b',
+      lastPageIndex: 1,
+    }));
+    expect(onProgressChange).not.toHaveBeenCalledWith(expect.objectContaining({ bookId: 'book-a' }));
+  });
+
+  it('restores and allows the first save after switching book ids on the same PDF', async () => {
+    const onProgressChange = vi.fn();
+    const { rerender } = render(
+      <InteractivePdfFlipbook
+        title="Shared book"
+        pdfPath="/books/shared.pdf"
+        bookId="book-a"
+        savedProgress={{
+          bookId: 'book-a',
+          lastPageIndex: 1,
+          progressPercent: 67,
+          completed: false,
+          lastOpenedAt: '2026-01-01T00:00:00.000Z',
+        }}
+        onProgressChange={onProgressChange}
+      />,
+    );
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(1));
+    flip.mockClear();
+
+    rerender(
+      <InteractivePdfFlipbook
+        title="Shared book"
+        pdfPath="/books/shared.pdf"
+        bookId="book-b"
+        savedProgress={{
+          bookId: 'book-b',
+          lastPageIndex: 2,
+          progressPercent: 100,
+          completed: true,
+          lastOpenedAt: '2026-01-02T00:00:00.000Z',
+        }}
+        onProgressChange={onProgressChange}
+      />,
+    );
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(2));
+
+    onProgressChange.mockClear();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => vi.advanceTimersByTime(650));
+    expect(onProgressChange).toHaveBeenCalledTimes(1);
+    expect(onProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'book-b',
+      lastPageIndex: 1,
+    }));
+  });
+
+  it('invalidates a pending settled save when identity and callback change', async () => {
+    const oldProgressChange = vi.fn();
+    const newProgressChange = vi.fn();
+    const { rerender } = render(
+      <InteractivePdfFlipbook
+        title="Shared book"
+        pdfPath="/books/shared.pdf"
+        bookId="book-a"
+        onProgressChange={oldProgressChange}
+      />,
+    );
+    await screen.findByText('PDF page 1');
+    await waitFor(() => expect(oldProgressChange).toHaveBeenCalledTimes(1));
+    oldProgressChange.mockClear();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+
+    rerender(
+      <InteractivePdfFlipbook
+        title="Shared book"
+        pdfPath="/books/shared.pdf"
+        bookId="book-b"
+        onProgressChange={newProgressChange}
+      />,
+    );
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(oldProgressChange).not.toHaveBeenCalled();
+    expect(newProgressChange).toHaveBeenCalledTimes(1);
+    expect(newProgressChange).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'book-b',
+      lastPageIndex: 0,
+    }));
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+  });
+
+  it('starts at the cover without automatically flipping when no progress exists', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
+    expect(flip).not.toHaveBeenCalled();
+  });
+
+  it('safely clamps saved progress outside the PDF page range', async () => {
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        savedProgress={{
+          bookId: 'demo-book',
+          lastPageIndex: 99,
+          progressPercent: 100,
+          completed: true,
+          lastOpenedAt: '2026-01-01T00:00:00.000Z',
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(flip).toHaveBeenCalledWith(2));
+    expect(screen.getByText('Trang 3 / 3')).toBeInTheDocument();
+  });
+
+  it('emits progress only after the latest rapid flip settles', async () => {
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        bookId="demo-book"
+        onProgressChange={onProgressChange}
+      />,
+    );
+    await screen.findByText('PDF page 1');
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText('Mock user flip'));
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(onProgressChange).toHaveBeenCalledTimes(2);
+    expect(onProgressChange).toHaveBeenLastCalledWith({
+      bookId: 'demo-book',
+      lastPageIndex: 1,
+      progressPercent: 67,
+      completed: false,
+      lastOpenedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+  });
+
+  it('emits completed progress at 100 percent for the final page', async () => {
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" bookId="demo-book" onProgressChange={onProgressChange} />,
+    );
+    await screen.findByText('PDF page 1');
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText('Mock user flip'));
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      bookId: 'demo-book',
+      lastPageIndex: 2,
+      progressPercent: 100,
+      completed: true,
+    }));
+  });
+
+  it('emits 100 percent for a one-page PDF', async () => {
+    mockNumPages = 1;
+    const onProgressChange = vi.fn();
+    render(
+      <InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" bookId="demo-book" onProgressChange={onProgressChange} />,
+    );
+    await screen.findByText('PDF page 1');
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText('Mock user flip to page 2'));
+    act(() => vi.advanceTimersByTime(650));
+
+    expect(onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      lastPageIndex: 0,
+      progressPercent: 100,
+      completed: true,
+    }));
   });
 
   it('remounts the live flipbook at its cover for a different PDF with the same page count', async () => {
