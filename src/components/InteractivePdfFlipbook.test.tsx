@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InteractivePdfFlipbook, resolvePublicAssetPath } from './InteractivePdfFlipbook';
+import { InteractivePdfFlipbookAudio } from './InteractivePdfFlipbookAudio';
+import { InteractivePdfFlipbookMenu } from './InteractivePdfFlipbookMenu';
+import { InteractivePdfFlipbookThumbnails } from './InteractivePdfFlipbookThumbnails';
 import { buildNarrationAudioChunks } from '../utils/narration';
 import type { ReadingProgressRecord } from '../types/electron';
 
@@ -236,6 +239,37 @@ describe('InteractivePdfFlipbook', () => {
     } else {
       delete (document as { fullscreenElement?: Document['fullscreenElement'] }).fullscreenElement;
     }
+  });
+
+  it('keeps the split reader UI labels and audio elements intact', async () => {
+    expect(InteractivePdfFlipbookMenu).toBeTypeOf('function');
+    expect(InteractivePdfFlipbookThumbnails).toBeTypeOf('function');
+    expect(InteractivePdfFlipbookAudio).toBeTypeOf('function');
+
+    render(
+      <InteractivePdfFlipbook
+        title="Demo book"
+        pdfPath="/books/demo.pdf"
+        audioPath="/books/demo.mp3"
+        timeline={timeline}
+      />,
+    );
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mở menu điều khiển' }));
+
+    expect(screen.getByRole('navigation', { name: 'Menu điều khiển trình đọc' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cài đặt TTS' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /hình thu nhỏ/i }));
+
+    expect(screen.getByLabelText('Bảng hình thu nhỏ PDF')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hiệu ứng âm thanh lật trang')).toHaveAttribute(
+      'src',
+      '/Audio/effects/page-flip.mp3',
+    );
+    expect(screen.getByLabelText('Âm thanh đọc văn bản')).toBeInTheDocument();
   });
 
   it('renders PDF pages inside the flipbook and wires the audio source', async () => {
