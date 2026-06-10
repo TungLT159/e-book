@@ -120,6 +120,7 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#111111',
     autoHideMenuBar: true,
+    icon: path.join(app.getAppPath(), 'public', 'iiticon.ico'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -277,6 +278,9 @@ ipcMain.handle('debug:empty-extracted-text-file', async (_event, payload) => {
 });
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(app.getName());
+  }
   createWindow();
 
   app.on('activate', () => {
