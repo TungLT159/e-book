@@ -30,6 +30,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { getDocument } from "pdfjs-dist";
 import { PDF_WORKER_URL } from "../hooks/pdfWorker";
 import { resolvePublicAssetPath } from "../utils/publicAsset";
+import type { ReadingProgressRecord } from "../types/electron";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -77,11 +78,16 @@ type FlipbookStageProps = {
   maxWidth: number;
   maxHeight: number;
   onFlip: (event: { data: number }) => void;
+  onInit?: () => void;
 };
 
 type InteractivePdfFlipbookProps = {
   title: string;
   pdfPath: string;
+  bookId?: string;
+  savedProgress?: ReadingProgressRecord | null;
+  isReadingProgressLoaded?: boolean;
+  onProgressChange?: (payload: ReadingProgressRecord) => void;
   onBackToLibrary?: () => void;
 } & Record<string, unknown>;
 
@@ -272,6 +278,7 @@ const FlipbookStage = memo(function FlipbookStage({
   maxWidth,
   maxHeight,
   onFlip,
+  onInit,
 }: FlipbookStageProps) {
   const pages = Array.from({ length: numPages }, (_, index) => index + 1);
 
@@ -303,6 +310,7 @@ const FlipbookStage = memo(function FlipbookStage({
       className="interactive-reader__book"
       style={{ width: "100%", height: "100%" }}
       onFlip={onFlip}
+      onInit={onInit}
     >
       {pages.map((pageNumber) => {
         const isFrontCover = pageNumber === 1;
@@ -344,6 +352,10 @@ const FlipbookStage = memo(function FlipbookStage({
 export function InteractivePdfFlipbook({
   title,
   pdfPath,
+  bookId,
+  savedProgress,
+  isReadingProgressLoaded = true,
+  onProgressChange,
   onBackToLibrary,
 }: InteractivePdfFlipbookProps) {
   const [numPages, setNumPages] = useState(0);
@@ -381,6 +393,11 @@ export function InteractivePdfFlipbook({
   const currentPageIndexRef = useRef(0);
   const lastSyncedPageRef = useRef(1);
   const flipSettledTimeoutRef = useRef<number | null>(null);
+  const restoredProgressIdentityRef = useRef<string | null>(null);
+  const isRestoringProgressRef = useRef(false);
+  const lastEmittedPageIndexRef = useRef<number | null>(null);
+  const emittedOpenProgressKeysRef = useRef(new Set<string>());
+  const pendingRestoreRef = useRef<number | null>(null);
   const narrationBlobUrlRef = useRef<string | null>(null);
   const narrationRequestIdRef = useRef(0);
   const narrationPlaybackOperationIdRef = useRef(0);
@@ -394,6 +411,11 @@ export function InteractivePdfFlipbook({
   const currentPage = currentPageIndex + 1;
   const pages = Array.from({ length: numPages }, (_, index) => index + 1);
   const resolvedPdfPath = resolvePublicAssetPath(pdfPath);
+  const activeProgressIdentity = `${bookId || "pdf"}:${pdfPath}`;
+  const restorableProgress =
+    savedProgress && (!bookId || savedProgress.bookId === bookId)
+      ? savedProgress
+      : null;
   const resolvedPageFlipSoundPath =
     resolvePublicAssetPath(PAGE_FLIP_SOUND_PATH);
   const readerZoom = zoom * (isFullscreen ? FULLSCREEN_ZOOM_MULTIPLIER : 1);
@@ -649,7 +671,7 @@ export function InteractivePdfFlipbook({
           return;
         }
 
-        bookRef.current?.pageFlip().flip(targetPageIndex);
+        bookRef.current?.pageFlip()?.flip(targetPageIndex);
         narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
           narrationPagePauseTimeoutRef.current = null;
           if (
@@ -717,20 +739,54 @@ export function InteractivePdfFlipbook({
     setCurrentPageIndex(pageIndex);
   }, []);
 
+  const onFlipbookInit = useCallback(() => {
+    const pendingPage = pendingRestoreRef.current;
+    if (pendingPage !== null) {
+      pendingRestoreRef.current = null;
+      bookRef.current?.pageFlip()?.flip(pendingPage);
+    }
+  }, []);
+
+  const emitProgress = useCallback(
+    (pageIndex: number) => {
+      const progressBookId = bookId || savedProgress?.bookId;
+      if (!progressBookId || !onProgressChange || !numPages) return;
+
+      lastEmittedPageIndexRef.current = pageIndex;
+      onProgressChange({
+        bookId: progressBookId,
+        lastPageIndex: pageIndex,
+        progressPercent: Math.round(((pageIndex + 1) / numPages) * 100),
+        completed: pageIndex === numPages - 1,
+        lastOpenedAt: new Date().toISOString(),
+      });
+    },
+    [bookId, numPages, onProgressChange, savedProgress?.bookId],
+  );
+
   const handleFlip = useCallback(
     (event: { data: number }) => {
       playPageFlipSound();
+
+      if (isRestoringProgressRef.current) {
+        isRestoringProgressRef.current = false;
+        return;
+      }
 
       if (flipSettledTimeoutRef.current !== null) {
         window.clearTimeout(flipSettledTimeoutRef.current);
       }
 
       flipSettledTimeoutRef.current = window.setTimeout(() => {
-        setVisiblePage(event.data);
+        const settledPageIndex = Math.min(Math.max(event.data, 0), numPages - 1);
+        setVisiblePage(settledPageIndex);
+        if (lastEmittedPageIndexRef.current !== settledPageIndex) {
+          emitProgress(settledPageIndex);
+        }
         flipSettledTimeoutRef.current = null;
       }, FLIPPING_TIME);
     },
-    [playPageFlipSound, setVisiblePage],
+    [emitProgress, numPages, playPageFlipSound, setVisiblePage],
   );
 
   const flipToPage = useCallback(
@@ -738,7 +794,7 @@ export function InteractivePdfFlipbook({
       if (!numPages) return;
 
       const targetPageIndex = Math.min(Math.max(pageIndex, 0), numPages - 1);
-      bookRef.current?.pageFlip().flip(targetPageIndex);
+      bookRef.current?.pageFlip()?.flip(targetPageIndex);
       setVisiblePage(targetPageIndex);
       setIsThumbnailPanelOpen(false);
     },
@@ -748,13 +804,13 @@ export function InteractivePdfFlipbook({
   const flipToPreviousPage = useCallback(() => {
     if (currentPageIndex <= 0) return;
 
-    bookRef.current?.pageFlip().flipPrev();
+    bookRef.current?.pageFlip()?.flipPrev();
   }, [currentPageIndex]);
 
   const flipToNextPage = useCallback(() => {
     if (!numPages || currentPageIndexRef.current >= numPages - 1) return;
 
-    bookRef.current?.pageFlip().flipNext();
+    bookRef.current?.pageFlip()?.flipNext();
   }, [numPages]);
 
   const readNarrationPage = useCallback(
@@ -793,7 +849,7 @@ export function InteractivePdfFlipbook({
         return;
       }
 
-      bookRef.current?.pageFlip().flip(targetPageIndex);
+      bookRef.current?.pageFlip()?.flip(targetPageIndex);
 
       narrationPagePauseTimeoutRef.current = window.setTimeout(() => {
         narrationPagePauseTimeoutRef.current = null;
@@ -882,12 +938,81 @@ export function InteractivePdfFlipbook({
 
     lastSyncedPageRef.current = 1;
     currentPageIndexRef.current = 0;
+    isRestoringProgressRef.current = false;
     setCurrentPageIndex(0);
 
     return () => {
       narrationOperationIdRef.current += 1;
     };
   }, [pdfPath, title]);
+
+  useEffect(() => {
+    if (flipSettledTimeoutRef.current !== null) {
+      window.clearTimeout(flipSettledTimeoutRef.current);
+      flipSettledTimeoutRef.current = null;
+    }
+
+    restoredProgressIdentityRef.current = null;
+    isRestoringProgressRef.current = false;
+    lastEmittedPageIndexRef.current = null;
+    currentPageIndexRef.current = 0;
+    setCurrentPageIndex(0);
+  }, [activeProgressIdentity]);
+
+  useEffect(() => {
+    return () => {
+      if (flipSettledTimeoutRef.current !== null) {
+        window.clearTimeout(flipSettledTimeoutRef.current);
+        flipSettledTimeoutRef.current = null;
+      }
+    };
+  }, [activeProgressIdentity, onProgressChange]);
+
+  useEffect(() => {
+    if (
+      !numPages ||
+      !restorableProgress ||
+      restoredProgressIdentityRef.current === activeProgressIdentity
+    ) return;
+
+    const restoredPageIndex = Math.min(
+      Math.max(restorableProgress.lastPageIndex, 0),
+      numPages - 1,
+    );
+    restoredProgressIdentityRef.current = activeProgressIdentity;
+    const restoredOpenKey = `${activeProgressIdentity}:restored`;
+    const shouldEmitRestoredOpen =
+      !emittedOpenProgressKeysRef.current.has(restoredOpenKey) &&
+      lastEmittedPageIndexRef.current !== restoredPageIndex;
+    if (shouldEmitRestoredOpen) {
+      emittedOpenProgressKeysRef.current.add(restoredOpenKey);
+    }
+
+    if (restoredPageIndex === currentPageIndexRef.current) {
+      if (shouldEmitRestoredOpen) emitProgress(restoredPageIndex);
+      return;
+    }
+
+    const flipApi = bookRef.current?.pageFlip();
+    if (flipApi) {
+      isRestoringProgressRef.current = true;
+      flipApi.flip(restoredPageIndex);
+      setVisiblePage(restoredPageIndex);
+      if (shouldEmitRestoredOpen) emitProgress(restoredPageIndex);
+    } else {
+      pendingRestoreRef.current = restoredPageIndex;
+    }
+  }, [activeProgressIdentity, emitProgress, numPages, restorableProgress, setVisiblePage]);
+
+  useEffect(() => {
+    if (!numPages || restorableProgress || !isReadingProgressLoaded) return;
+
+    const initialOpenKey = `${activeProgressIdentity}:initial`;
+    if (emittedOpenProgressKeysRef.current.has(initialOpenKey)) return;
+
+    emittedOpenProgressKeysRef.current.add(initialOpenKey);
+    emitProgress(0);
+  }, [activeProgressIdentity, emitProgress, isReadingProgressLoaded, numPages, restorableProgress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1823,6 +1948,7 @@ export function InteractivePdfFlipbook({
                 maxWidth={bookMaxWidth}
                 maxHeight={bookMaxHeight}
                 onFlip={handleFlip}
+                onInit={onFlipbookInit}
               />
             </div>
           )}

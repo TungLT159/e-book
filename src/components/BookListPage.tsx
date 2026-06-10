@@ -1,12 +1,14 @@
 import { BookOpen, FileText, Filter, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { PdfBookState } from '../hooks/usePdfBookLoader';
+import type { ReadingProgressRecord } from '../types/electron';
 import { resolvePublicAssetPath } from '../utils/publicAsset';
 
 type BookListPageProps = {
   books: PdfBookState[];
   loading?: boolean;
   onSelectBook: (bookId: string) => void;
+  progressByBookId?: Record<string, ReadingProgressRecord>;
 };
 
 type SearchFilters = {
@@ -30,6 +32,7 @@ type ScoredBook = {
 };
 
 const fallbackCoverColors: [string, string] = ['#2a5d6b', '#f4a261'];
+const isoTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 function normalizeSearchText(value: string) {
   return value
@@ -121,17 +124,41 @@ function getBookMatchScore(book: PdfBookState, filters: SearchFilters, index: nu
 type BookCardProps = {
   book: PdfBookState;
   onSelectBook: (bookId: string) => void;
+  progress?: ReadingProgressRecord;
 };
 
-function BookCard({ book, onSelectBook }: BookCardProps) {
+function isValidProgressRecord(progress: ReadingProgressRecord | undefined, bookId: string) {
+  return Boolean(
+    progress
+      && progress.bookId === bookId
+      && Number.isInteger(progress.lastPageIndex)
+      && progress.lastPageIndex >= 0
+      && Number.isFinite(progress.progressPercent)
+      && progress.progressPercent >= 0
+      && progress.progressPercent <= 100
+      && typeof progress.completed === 'boolean'
+      && typeof progress.lastOpenedAt === 'string'
+      && progress.lastOpenedAt.trim().length > 0
+      && isoTimestampPattern.test(progress.lastOpenedAt)
+      && Number.isFinite(Date.parse(progress.lastOpenedAt)),
+  );
+}
+
+function BookCard({ book, onSelectBook, progress }: BookCardProps) {
   const [hasThumbnailError, setHasThumbnailError] = useState(false);
   const [startColor, endColor] = book.config.coverColors ?? fallbackCoverColors;
+  const validProgress = isValidProgressRecord(progress, book.config.id) ? progress : undefined;
+  const progressLabel = validProgress?.completed
+    ? 'Đã hoàn thành'
+    : validProgress
+      ? `${validProgress.progressPercent}%. Tiếp tục từ trang ${validProgress.lastPageIndex + 1}`
+      : '';
 
   return (
     <button
       type="button"
       className="book-card"
-      aria-label={`Đọc sách: ${book.config.title}`}
+      aria-label={`Đọc sách: ${book.config.title}${progressLabel ? `. ${progressLabel}` : ''}`}
       onClick={() => onSelectBook(book.config.id)}
     >
       <span
@@ -156,12 +183,20 @@ function BookCard({ book, onSelectBook }: BookCardProps) {
           <FileText aria-hidden="true" />
           {book.config.pageCount} trang
         </span>
+        {validProgress?.completed ? (
+          <span className="book-card__meta">Đã hoàn thành</span>
+        ) : validProgress ? (
+          <>
+            <span className="book-card__meta">{validProgress.progressPercent}%</span>
+            <span className="book-card__meta">Tiếp tục từ trang {validProgress.lastPageIndex + 1}</span>
+          </>
+        ) : null}
       </span>
     </button>
   );
 }
 
-export function BookListPage({ books, loading = false, onSelectBook }: BookListPageProps) {
+export function BookListPage({ books, loading = false, onSelectBook, progressByBookId }: BookListPageProps) {
   const [query, setQuery] = useState('');
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -319,7 +354,12 @@ export function BookListPage({ books, loading = false, onSelectBook }: BookListP
             {primaryBooks.length > 0 ? (
               <div className="book-list-page__grid">
                 {primaryBooks.map((book) => (
-                  <BookCard key={book.config.id} book={book} onSelectBook={onSelectBook} />
+                  <BookCard
+                    key={book.config.id}
+                    book={book}
+                    onSelectBook={onSelectBook}
+                    progress={progressByBookId?.[book.config.id]}
+                  />
                 ))}
               </div>
             ) : relatedBooks.length > 0 ? (
@@ -341,7 +381,12 @@ export function BookListPage({ books, loading = false, onSelectBook }: BookListP
               <h2 className="book-list-page__related-heading" id="related-results-heading">Kết quả liên quan</h2>
               <div className="book-list-page__grid">
                 {relatedBooks.map((book) => (
-                  <BookCard key={book.config.id} book={book} onSelectBook={onSelectBook} />
+                  <BookCard
+                    key={book.config.id}
+                    book={book}
+                    onSelectBook={onSelectBook}
+                    progress={progressByBookId?.[book.config.id]}
+                  />
                 ))}
               </div>
             </section>

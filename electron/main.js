@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
-import { rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import {
   getEdgeTtsVoices,
   getOrCreateEdgeTtsAudioCacheFile,
@@ -20,6 +20,97 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.setPath('userData', path.join(app.getPath('temp'), 'flipbook-react-electron'));
 
 let mainWindow = null;
+let readingProgressMutationQueue = Promise.resolve();
+
+function getReadingProgressPath() {
+  return path.join(app.getPath('userData'), 'reading-progress.json');
+}
+
+function createEmptyReadingProgressStore() {
+  return { version: 1, updatedAt: new Date().toISOString(), books: {} };
+}
+
+function normalizeReadingProgressRecord(payload) {
+  const lastOpenedAtTimestamp = typeof payload?.lastOpenedAt === 'string'
+    ? Date.parse(payload.lastOpenedAt)
+    : Number.NaN;
+  if (
+    !payload
+    || typeof payload !== 'object'
+    || typeof payload.bookId !== 'string'
+    || payload.bookId.trim() === ''
+    || !Number.isInteger(payload.lastPageIndex)
+    || payload.lastPageIndex < 0
+    || !Number.isFinite(payload.progressPercent)
+    || payload.progressPercent < 0
+    || payload.progressPercent > 100
+    || typeof payload.completed !== 'boolean'
+    || typeof payload.lastOpenedAt !== 'string'
+    || !Number.isFinite(lastOpenedAtTimestamp)
+    || new Date(lastOpenedAtTimestamp).toISOString() !== payload.lastOpenedAt
+  ) {
+    return null;
+  }
+
+  return {
+    bookId: payload.bookId.trim(),
+    lastPageIndex: payload.lastPageIndex,
+    progressPercent: payload.progressPercent,
+    completed: payload.completed,
+    lastOpenedAt: payload.lastOpenedAt,
+  };
+}
+
+function normalizeReadingProgressStore(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1) {
+    return createEmptyReadingProgressStore();
+  }
+
+  if (!value.books || typeof value.books !== 'object' || Array.isArray(value.books)) {
+    return createEmptyReadingProgressStore();
+  }
+
+  const books = Object.entries(value.books).reduce((store, [bookId, record]) => {
+    const normalizedRecord = normalizeReadingProgressRecord(record);
+    if (normalizedRecord && normalizedRecord.bookId === bookId) {
+      store[bookId] = normalizedRecord;
+    }
+    return store;
+  }, {});
+
+  return {
+    version: 1,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+    books,
+  };
+}
+
+async function readReadingProgressStore() {
+  try {
+    const contents = await readFile(getReadingProgressPath(), 'utf8');
+    return normalizeReadingProgressStore(JSON.parse(contents));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return createEmptyReadingProgressStore();
+    }
+
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return createEmptyReadingProgressStore();
+    }
+
+    throw error;
+  }
+}
+
+async function writeReadingProgressStore(store) {
+  await writeFile(getReadingProgressPath(), JSON.stringify(store, null, 2), 'utf8');
+}
+
+function enqueueReadingProgressMutation(mutation) {
+  const result = readingProgressMutationQueue.then(mutation);
+  readingProgressMutationQueue = result.catch(() => {});
+  return result;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -127,6 +218,43 @@ ipcMain.handle('audio-cache:prepare-edge-tts-audio-cache-file', async (_event, p
         throw error;
       }
     },
+  });
+});
+
+ipcMain.handle('reading-progress:get-all', async () => {
+  return readReadingProgressStore();
+});
+
+ipcMain.handle('reading-progress:save', async (_event, payload) => {
+  return enqueueReadingProgressMutation(async () => {
+    const store = await readReadingProgressStore();
+    const record = normalizeReadingProgressRecord(payload);
+    if (!record) {
+      return store;
+    }
+
+    const nextStore = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      books: { ...store.books, [record.bookId]: record },
+    };
+    await writeReadingProgressStore(nextStore);
+    return nextStore;
+  });
+});
+
+ipcMain.handle('reading-progress:delete', async (_event, bookId) => {
+  return enqueueReadingProgressMutation(async () => {
+    const store = await readReadingProgressStore();
+    if (typeof bookId !== 'string' || bookId.trim() === '') {
+      return store;
+    }
+
+    const trimmedBookId = bookId.trim();
+    const { [trimmedBookId]: _deleted, ...books } = store.books;
+    const nextStore = { version: 1, updatedAt: new Date().toISOString(), books };
+    await writeReadingProgressStore(nextStore);
+    return nextStore;
   });
 });
 

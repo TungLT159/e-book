@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { PdfBookState } from '../hooks/usePdfBookLoader';
+import type { ReadingProgressRecord } from '../types/electron';
 import { BookListPage } from './BookListPage';
 
 const mockBooks: PdfBookState[] = [
@@ -63,6 +64,115 @@ const mockBooks: PdfBookState[] = [
 ];
 
 describe('BookListPage', () => {
+  it('shows percent and the one-based resume page for valid incomplete progress', () => {
+    const progress: ReadingProgressRecord = {
+      bookId: 'book-1',
+      lastPageIndex: 1,
+      progressPercent: 50,
+      completed: false,
+      lastOpenedAt: '2026-06-10T00:00:00.000Z',
+    };
+
+    render(
+      <BookListPage
+        books={mockBooks}
+        progressByBookId={{ 'book-1': progress }}
+        onSelectBook={vi.fn()}
+      />,
+    );
+
+    const bookCard = screen.getByRole('button', {
+      name: 'Đọc sách: Sách thứ nhất. 50%. Tiếp tục từ trang 2',
+    });
+    expect(within(bookCard).getByText('50%')).toBeInTheDocument();
+    expect(within(bookCard).getByText('Tiếp tục từ trang 2')).toBeInTheDocument();
+  });
+
+  it('shows only the completed state when valid progress is completed', () => {
+    const progress: ReadingProgressRecord = {
+      bookId: 'book-1',
+      lastPageIndex: 2,
+      progressPercent: 100,
+      completed: true,
+      lastOpenedAt: '2026-06-10T00:00:00.000Z',
+    };
+
+    render(
+      <BookListPage
+        books={mockBooks}
+        progressByBookId={{ 'book-1': progress }}
+        onSelectBook={vi.fn()}
+      />,
+    );
+
+    const bookCard = screen.getByRole('button', {
+      name: 'Đọc sách: Sách thứ nhất. Đã hoàn thành',
+    });
+    expect(within(bookCard).getByText('Đã hoàn thành')).toBeInTheDocument();
+    expect(within(bookCard).queryByText('100%')).not.toBeInTheDocument();
+    expect(within(bookCard).queryByText(/Tiếp tục từ trang/)).not.toBeInTheDocument();
+  });
+
+  it('shows no progress text when a book has no progress record', () => {
+    render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
+
+    expect(screen.queryByText('Đã hoàn thành')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tiếp tục từ trang/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+%$/)).not.toBeInTheDocument();
+  });
+
+  it('safely ignores a progress record with missing required fields', () => {
+    const invalidProgress = {
+      bookId: 'book-1',
+      lastPageIndex: 1,
+      completed: false,
+      lastOpenedAt: '2026-06-10T00:00:00.000Z',
+    } as ReadingProgressRecord;
+
+    render(
+      <BookListPage
+        books={mockBooks}
+        progressByBookId={{ 'book-1': invalidProgress }}
+        onSelectBook={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/Tiếp tục từ trang/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+%$/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a mismatched book id', { bookId: 'another-book' }],
+    ['a negative page index', { lastPageIndex: -1 }],
+    ['a fractional page index', { lastPageIndex: 1.5 }],
+    ['a progress percent below zero', { progressPercent: -1 }],
+    ['a progress percent above 100', { progressPercent: 101 }],
+    ['an empty timestamp', { lastOpenedAt: '' }],
+    ['an invalid timestamp', { lastOpenedAt: 'not-a-timestamp' }],
+    ['a parseable non-ISO timestamp', { lastOpenedAt: 'June 10, 2026' }],
+  ])('ignores progress with %s', (_description, override) => {
+    const invalidProgress: ReadingProgressRecord = {
+      bookId: 'book-1',
+      lastPageIndex: 1,
+      progressPercent: 50,
+      completed: false,
+      lastOpenedAt: '2026-06-10T00:00:00.000Z',
+      ...override,
+    };
+
+    render(
+      <BookListPage
+        books={mockBooks}
+        progressByBookId={{ 'book-1': invalidProgress }}
+        onSelectBook={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Đọc sách: Sách thứ nhất' })).toBeInTheDocument();
+    expect(screen.queryByText(/Tiếp tục từ trang/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+%$/)).not.toBeInTheDocument();
+  });
+
   it('renders the header and all book titles', () => {
     render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
     const primaryResults = screen.getByRole('region', { name: 'Kết quả phù hợp' });

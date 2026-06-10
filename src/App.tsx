@@ -3,6 +3,7 @@ import { BookListPage } from "./components/BookListPage";
 import { InteractivePdfFlipbook } from "./components/InteractivePdfFlipbook";
 import { books } from "./data/books";
 import { usePdfBookLoader } from "./hooks/usePdfBookLoader";
+import { useReadingProgress } from "./hooks/useReadingProgress";
 
 type View = "home" | "reader";
 
@@ -12,6 +13,7 @@ export default function App() {
     books.length > 0 ? books[0].id : "",
   );
   const { books: loadedBooks, loading } = usePdfBookLoader(books);
+  const { isLoaded, progressByBookId, getBookProgress, saveBookProgress } = useReadingProgress();
   const activeBook = loadedBooks.find((book) => book.config.id === activeBookId)?.config;
 
   const handleSelectBook = (bookId: string) => {
@@ -26,7 +28,12 @@ export default function App() {
   if (view === "home") {
     return (
       <div className="app-shell">
-        <BookListPage books={loadedBooks} loading={loading} onSelectBook={handleSelectBook} />
+        <BookListPage
+          books={loadedBooks}
+          loading={loading}
+          onSelectBook={handleSelectBook}
+          progressByBookId={progressByBookId}
+        />
       </div>
     );
   }
@@ -37,6 +44,10 @@ export default function App() {
         <InteractivePdfFlipbook
           title={activeBook.title}
           pdfPath={activeBook.pdfPath}
+          bookId={activeBook.id}
+          savedProgress={getBookProgress(activeBook.id)}
+          isReadingProgressLoaded={isLoaded}
+          onProgressChange={saveBookProgress}
           onBackToLibrary={handleBackToLibrary}
         />
       ) : (
