@@ -74,11 +74,6 @@ export function InteractivePdfFlipbook({
         setIsAutoFlipEnabled={state.setIsAutoFlipEnabled}
         currentPageIndex={state.currentPageIndex}
         flipToPage={state.flipToPage}
-        isNarrationPaused={state.isNarrationPaused}
-        narrationPageIndex={state.narrationPageIndex}
-        readNarrationPage={state.readNarrationPage}
-        flipToPreviousPage={state.flipToPreviousPage}
-        flipToNextPage={state.flipToNextPage}
         narrationError={state.narrationError}
       />
 
