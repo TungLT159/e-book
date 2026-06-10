@@ -6,16 +6,17 @@ import { InteractivePdfFlipbookAudio } from './InteractivePdfFlipbookAudio';
 import { InteractivePdfFlipbookMenu } from './InteractivePdfFlipbookMenu';
 import { InteractivePdfFlipbookThumbnails } from './InteractivePdfFlipbookThumbnails';
 import { useInteractivePdfFlipbook } from './hooks/useInteractivePdfFlipbook';
+import type { ReadingProgressRecord } from '../types/electron';
 
 type InteractivePdfFlipbookProps = {
   title: string;
   pdfPath: string;
   onBackToLibrary?: () => void;
   bookId?: string;
-  savedProgress?: unknown;
+  savedProgress?: ReadingProgressRecord | null;
   isReadingProgressLoaded?: boolean;
-  onProgressChange?: (payload: unknown) => void;
-};
+  onProgressChange?: (payload: ReadingProgressRecord) => void;
+} & Record<string, unknown>;
 
 export function InteractivePdfFlipbook({
   title,
@@ -73,7 +74,6 @@ export function InteractivePdfFlipbook({
         setIsAutoFlipEnabled={state.setIsAutoFlipEnabled}
         currentPageIndex={state.currentPageIndex}
         flipToPage={state.flipToPage}
-        isAutoReadPreparing={state.isAutoReadPreparing}
         isNarrationPaused={state.isNarrationPaused}
         narrationPageIndex={state.narrationPageIndex}
         readNarrationPage={state.readNarrationPage}
