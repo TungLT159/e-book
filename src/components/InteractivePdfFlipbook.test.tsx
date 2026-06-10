@@ -5,11 +5,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  buildNarrationAudioChunks,
-  InteractivePdfFlipbook,
-  resolvePublicAssetPath,
-} from './InteractivePdfFlipbook';
+import { InteractivePdfFlipbook, resolvePublicAssetPath } from './InteractivePdfFlipbook';
+import { buildNarrationAudioChunks } from '../utils/narration';
 import type { ReadingProgressRecord } from '../types/electron';
 
 const flip = vi.fn();

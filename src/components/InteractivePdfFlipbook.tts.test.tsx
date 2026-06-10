@@ -3,7 +3,8 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InteractivePdfFlipbook, sanitizeNarrationText } from './InteractivePdfFlipbook';
+import { InteractivePdfFlipbook } from './InteractivePdfFlipbook';
+import { sanitizeNarrationText } from '../utils/narration';
 
 const flipNext = vi.fn();
 const flipPrev = vi.fn();

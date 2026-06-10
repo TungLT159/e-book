@@ -6,7 +6,7 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   textContentItemsToNarrationText,
   type PdfTextContentItem,
-} from "./InteractivePdfFlipbook";
+} from "../utils/narration";
 
 describe("real PDF narration text extraction", () => {
   it("keeps Vietnamese words joined on the squirrel book page 3", async () => {
