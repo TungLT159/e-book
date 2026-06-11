@@ -241,6 +241,45 @@ describe('InteractivePdfFlipbook', () => {
     }
   });
 
+  it('disables the narration voice control when no voices are available', () => {
+    render(
+      <InteractivePdfFlipbookMenu
+        title="Demo book"
+        currentPage={1}
+        numPages={2}
+        isMenuOpen
+        menuToggleRef={{ current: null }}
+        menuPanelRef={{ current: null }}
+        toggleMenu={vi.fn()}
+        isFullscreen={false}
+        zoom={1}
+        changeZoom={vi.fn()}
+        toggleFullscreen={vi.fn()}
+        toggleThumbnails={vi.fn()}
+        isTtsSettingsOpen
+        toggleTtsSettings={vi.fn()}
+        closeTtsSettings={vi.fn()}
+        isVoiceLoading={false}
+        voiceOptions={[]}
+        selectedVoice=""
+        setSelectedVoice={vi.fn()}
+        speechRate={0}
+        setSpeechRate={vi.fn()}
+        isNarrationEnabled={false}
+        isNarrationLoading={false}
+        isNarrationSynthesizing={false}
+        toggleNarration={vi.fn()}
+        isAutoFlipEnabled={false}
+        setIsAutoFlipEnabled={vi.fn()}
+        currentPageIndex={0}
+        flipToPage={vi.fn()}
+        narrationError={null}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Giọng đọc Không có giọng đọc/ })).toBeDisabled();
+  });
+
   it('keeps the split reader UI labels and audio elements intact', async () => {
     expect(InteractivePdfFlipbookMenu).toBeTypeOf('function');
     expect(InteractivePdfFlipbookThumbnails).toBeTypeOf('function');
