@@ -1598,9 +1598,8 @@ describe('InteractivePdfFlipbook', () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText('Giọng đọc'), {
-      target: { value: 'vi-VN-HoaiMyNeural' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: /^Giọng đọc\b/ }));
+    fireEvent.click(screen.getByRole('option', { name: /^Hoài My\b/ }));
 
     await waitFor(() =>
       expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenLastCalledWith(

@@ -1,10 +1,6 @@
 import { ArrowLeft, Images, Maximize, Menu, Minimize, Pause, Play, Settings, SkipBack, SkipForward, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-
-type NarrationVoiceOption = {
-  value: string;
-  label: string;
-};
+import { CustomSelect, type CustomSelectOption } from './CustomSelect';
 
 type InteractivePdfFlipbookMenuProps = {
   title: string;
@@ -24,7 +20,7 @@ type InteractivePdfFlipbookMenuProps = {
   toggleTtsSettings: () => void;
   closeTtsSettings: () => void;
   isVoiceLoading: boolean;
-  voiceOptions: NarrationVoiceOption[];
+  voiceOptions: CustomSelectOption[];
   selectedVoice: string;
   setSelectedVoice: Dispatch<SetStateAction<string>>;
   speechRate: number;
@@ -164,14 +160,15 @@ export function InteractivePdfFlipbookMenu({
                       </button>
                     </div>
 
-                    <label className="interactive-reader__tts-field">
-                      <span>Giọng đọc</span>
-                      <select value={selectedVoice} onChange={(event) => setSelectedVoice(event.target.value)} disabled={isVoiceLoading || voiceOptions.length === 0} aria-label="Giọng đọc">
-                        {voiceOptions.map((voice) => (
-                          <option key={voice.value} value={voice.value}>{voice.label}</option>
-                        ))}
-                      </select>
-                    </label>
+                    <CustomSelect
+                      label="Giọng đọc"
+                      value={selectedVoice}
+                      options={voiceOptions}
+                      onChange={setSelectedVoice}
+                      disabled={isVoiceLoading || voiceOptions.length === 0}
+                      placeholder={isVoiceLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc'}
+                      className="interactive-reader__tts-field"
+                    />
 
                     <label className="interactive-reader__tts-field">
                       <span>Tốc độ đọc</span>

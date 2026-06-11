@@ -214,8 +214,9 @@ describe('InteractivePdfFlipbook narration', () => {
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
     fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
 
-    const voiceSelect = await screen.findByLabelText('Giọng đọc');
-    fireEvent.change(voiceSelect, { target: { value: 'vi-VN-NamMinhNeural' } });
+    const voiceTrigger = await screen.findByRole('button', { name: /^Giọng đọc\b/ });
+    fireEvent.click(voiceTrigger);
+    fireEvent.click(screen.getByRole('option', { name: /^Nam Minh\b/ }));
 
     const speedSlider = screen.getByLabelText('Tốc độ đọc');
     fireEvent.change(speedSlider, { target: { value: '25' } });
@@ -228,6 +229,18 @@ describe('InteractivePdfFlipbook narration', () => {
         rate: '+25%',
       }),
     );
+  });
+
+  it('disables the narration voice control while voices are loading', async () => {
+    getVoices.mockImplementationOnce(() => new Promise(() => undefined));
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
+
+    expect(screen.getByRole('button', { name: /^Giọng đọc\b/ })).toBeDisabled();
   });
 
   it('shows when narration audio is being synthesized', async () => {
