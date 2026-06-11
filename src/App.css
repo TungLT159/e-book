@@ -4,6 +4,7 @@
   /* Doodle Design System Colors */
   --color-primary:   #49B6E5;
   --color-secondary: #263D5B;
+  --color-focus:     #0d6388;
   --color-success:   #16A34A;
   --color-warning:   #D97706;
   --color-danger:    #DC2626;
@@ -69,7 +70,7 @@
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -436,7 +437,7 @@ button {
 }
 
 .interactive-reader__library-back:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -508,7 +509,7 @@ button {
 }
 
 .interactive-reader__nav:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -572,7 +573,8 @@ button {
 .menu-section:not(:last-child) {
   padding-bottom: var(--space-3);
   border-bottom: var(--doodle-border-thin);
-  opacity: 0.5;
+  border-radius: var(--doodle-radius-sm);
+  background: linear-gradient(180deg, rgba(38, 61, 91, 0.04), transparent 75%);
 }
 
 .menu-section__title {
@@ -664,19 +666,19 @@ button {
 .custom-select__trigger[aria-expanded='true'],
 .menu-section button.custom-select__trigger:hover:not(:disabled),
 .menu-section button.custom-select__trigger[aria-expanded='true'] {
-  border-color: var(--color-primary);
+  border-color: var(--color-focus);
   background: var(--doodle-bg);
   color: var(--color-text);
-  box-shadow: 3px 3px 0 rgba(73, 182, 229, 0.35);
+  box-shadow: 3px 3px 0 rgba(13, 99, 136, 0.22);
   transform: none;
 }
 
 .custom-select__trigger:focus-visible,
 .menu-section button.custom-select__trigger:focus-visible {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary);
+  border-color: var(--color-focus);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-  box-shadow: 3px 3px 0 rgba(73, 182, 229, 0.35);
+  box-shadow: 3px 3px 0 rgba(13, 99, 136, 0.22);
 }
 
 .custom-select__trigger:disabled,
@@ -711,7 +713,7 @@ button {
 .custom-select__trigger:hover:not(:disabled) .custom-select__chevron,
 .custom-select__trigger:focus-visible .custom-select__chevron,
 .custom-select__trigger[aria-expanded='true'] .custom-select__chevron {
-  color: var(--color-primary);
+  color: var(--color-focus);
 }
 
 .custom-select__trigger[aria-expanded='true'] .custom-select__chevron {
@@ -735,6 +737,10 @@ button {
   background: var(--doodle-bg);
   box-shadow: var(--doodle-shadow-lg);
   color: var(--color-text);
+}
+
+.interactive-reader__menu-panel .custom-select__listbox {
+  max-height: min(14rem, max(8rem, calc(100vh - 160px)));
 }
 
 .custom-select__option,
@@ -765,7 +771,23 @@ button {
 .menu-section .custom-select__option--active,
 .menu-section .custom-select__option--selected {
   background: rgba(73, 182, 229, 0.16);
-  color: #175d7a;
+  color: var(--color-focus);
+  box-shadow: none;
+  transform: none;
+}
+
+.menu-section button.custom-select__option:hover:not(:disabled) {
+  background: var(--doodle-bg-tint);
+  color: var(--color-text);
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.menu-section button.custom-select__option--active:hover:not(:disabled),
+.menu-section button.custom-select__option--selected:hover:not(:disabled) {
+  background: rgba(73, 182, 229, 0.16);
+  color: var(--color-focus);
   box-shadow: none;
   transform: none;
 }
@@ -779,7 +801,7 @@ button {
   width: 1rem;
   height: 1rem;
   flex: 0 0 auto;
-  color: var(--color-primary);
+  color: var(--color-focus);
   stroke-width: 3;
 }
 
@@ -809,7 +831,7 @@ button {
 
 .interactive-reader__tts-submenu-header h4 {
   margin: 0;
-  color: var(--color-primary);
+  color: var(--color-focus);
   font-size: 0.95rem;
   font-weight: 400;
 }
@@ -861,10 +883,11 @@ label.interactive-reader__tts-field > span {
   left: auto;
   z-index: 50;
   width: 100%;
+  max-height: min(10rem, max(7rem, calc(100vh - 260px)));
 }
 
 .interactive-reader__tts-field output {
-  color: var(--color-primary);
+  color: var(--color-focus);
   font-size: 0.8rem;
   font-weight: 500;
 }
@@ -1040,7 +1063,7 @@ label.interactive-reader__tts-field > span {
 }
 
 .interactive-reader__auto-read-button:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -1528,7 +1551,7 @@ label.interactive-reader__tts-field > span {
 }
 
 .book-card:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -1653,7 +1676,6 @@ label.interactive-reader__tts-field > span {
 
   .menu-section:not(:last-child) {
     padding-bottom: 10px;
-    opacity: 0.5;
   }
 }
 
@@ -1671,7 +1693,6 @@ label.interactive-reader__tts-field > span {
     padding-bottom: 16px;
     border-right: none;
     border-bottom: var(--doodle-border-thin);
-    opacity: 0.5;
   }
 
   .menu-section button {
@@ -1818,6 +1839,14 @@ label.interactive-reader__tts-field > span {
 
   .book-card:hover,
   .book-card:active {
+    transform: none;
+  }
+
+  .custom-select__trigger:hover:not(:disabled),
+  .custom-select__trigger[aria-expanded='true'],
+  .menu-section button.custom-select__trigger:hover:not(:disabled),
+  .menu-section button.custom-select__trigger[aria-expanded='true'],
+  .custom-select__trigger[aria-expanded='true'] .custom-select__chevron {
     transform: none;
   }
 
