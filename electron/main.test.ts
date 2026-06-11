@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
     setPath: vi.fn(),
     getPath: vi.fn(() => 'C:\\Temp\\flipbook-react-electron'),
     getAppPath: vi.fn(() => 'C:\\App'),
+    getName: vi.fn(() => 'Flipbook React'),
+    setAppUserModelId: vi.fn(),
     whenReady: vi.fn(() => Promise.resolve()),
     on: vi.fn(),
     quit: vi.fn(),
@@ -64,6 +66,16 @@ describe('audio cache ipc bridge', () => {
     mocks.app.setPath.mockReset();
     mocks.app.getPath.mockReturnValue('C:\\Temp\\flipbook-react-electron');
     mocks.app.getAppPath.mockReturnValue('C:\\App');
+    mocks.app.getName.mockReturnValue('Flipbook React');
+    mocks.app.setAppUserModelId.mockReset();
+  });
+
+  it('registers the Windows app user model id when Electron is ready', async () => {
+    await import('./main.js');
+    await Promise.resolve();
+
+    expect(mocks.app.getName).toHaveBeenCalledTimes(1);
+    expect(mocks.app.setAppUserModelId).toHaveBeenCalledWith('Flipbook React');
   });
 
   it('returns a cache hit when the mp3 is fresh', async () => {
