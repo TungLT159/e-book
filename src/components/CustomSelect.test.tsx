@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CustomSelect, type CustomSelectOption } from './CustomSelect';
 
 const options: CustomSelectOption[] = [
@@ -8,6 +8,8 @@ const options: CustomSelectOption[] = [
   { value: 'two', label: 'Two' },
   { value: 'three', label: 'Three' },
 ];
+
+afterEach(() => vi.restoreAllMocks());
 
 function renderSelect(overrides: Partial<React.ComponentProps<typeof CustomSelect>> = {}) {
   const onChange = vi.fn();
@@ -27,9 +29,10 @@ describe('CustomSelect', () => {
   it('renders a labelled trigger with the controlled selection and popup ARIA', async () => {
     const user = userEvent.setup();
     renderSelect({ className: 'extra' });
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: 'Narrator Two' });
 
     expect(trigger).toHaveTextContent('Two');
+    expect(trigger).toHaveAccessibleName('Narrator Two');
     expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(trigger).not.toHaveAttribute('aria-controls');
@@ -47,7 +50,7 @@ describe('CustomSelect', () => {
   it('selects by pointer, closes, and restores trigger focus', async () => {
     const user = userEvent.setup();
     const { onChange } = renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     await user.click(trigger);
     await user.click(screen.getByRole('option', { name: 'Three' }));
 
@@ -59,7 +62,7 @@ describe('CustomSelect', () => {
   it('supports opening and wrapped keyboard navigation from the trigger', async () => {
     const user = userEvent.setup();
     renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     trigger.focus();
 
     await user.keyboard('{ArrowUp}');
@@ -78,7 +81,7 @@ describe('CustomSelect', () => {
   it('opens with the selected option on ArrowDown and through button Space semantics', async () => {
     const user = userEvent.setup();
     renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     trigger.focus();
 
     await user.keyboard('{ArrowDown}');
@@ -91,7 +94,7 @@ describe('CustomSelect', () => {
   it('selects the active listbox option with Enter', async () => {
     const user = userEvent.setup();
     const { onChange } = renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     trigger.focus();
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
 
@@ -103,7 +106,7 @@ describe('CustomSelect', () => {
   it('selects with Space and closes with Escape or Tab using the required focus behavior', async () => {
     const user = userEvent.setup();
     const { onChange } = renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     trigger.focus();
     await user.keyboard('{ArrowDown}');
     await user.keyboard(' ');
@@ -124,7 +127,7 @@ describe('CustomSelect', () => {
   it('closes on an outside pointer without changing the value or restoring focus', async () => {
     const user = userEvent.setup();
     const { onChange } = renderSelect();
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
     await user.click(trigger);
     await user.click(document.body);
 
@@ -137,15 +140,16 @@ describe('CustomSelect', () => {
     const { rerender } = render(
       <CustomSelect label="Narrator" value="" options={options} onChange={vi.fn()} disabled />,
     );
-    expect(screen.getByRole('button', { name: 'Narrator' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Narrator\b/ })).toBeDisabled();
     rerender(<CustomSelect label="Narrator" value="" options={[]} onChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Narrator' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Narrator\b/ })).toBeDisabled();
   });
 
   it('shows a placeholder for an unknown value without changing it', async () => {
     const user = userEvent.setup();
     const { onChange } = renderSelect({ value: 'missing', placeholder: 'Choose one' });
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: 'Narrator Choose one' });
+    expect(trigger).toHaveAccessibleName('Narrator Choose one');
     expect(trigger).toHaveTextContent('Choose one');
     expect(onChange).not.toHaveBeenCalled();
     await user.click(trigger);
@@ -157,7 +161,7 @@ describe('CustomSelect', () => {
     const { rerender } = render(
       <CustomSelect label="Narrator" value="two" options={options} onChange={vi.fn()} />,
     );
-    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    await user.click(screen.getByRole('button', { name: /^Narrator\b/ }));
     rerender(
       <CustomSelect
         label="Narrator"
@@ -174,13 +178,35 @@ describe('CustomSelect', () => {
     expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Five' }).id);
   });
 
+  it('keeps a valid active option through reorder without render-time synchronization', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <CustomSelect label="Narrator" value="two" options={options} onChange={onChange} />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Narrator\b/ }));
+    await user.keyboard('{End}');
+    rerender(
+      <CustomSelect
+        label="Narrator"
+        value="two"
+        options={[options[2], options[1], options[0]]}
+        onChange={onChange}
+      />,
+    );
+
+    const listbox = screen.getByRole('listbox');
+    expect(document.getElementById(listbox.getAttribute('aria-activedescendant')!)).toBeInTheDocument();
+    expect(listbox).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Two' }).id);
+  });
+
   it('closes safely when it becomes disabled while open', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { rerender } = render(
       <CustomSelect label="Narrator" value="two" options={options} onChange={onChange} />,
     );
-    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    await user.click(screen.getByRole('button', { name: /^Narrator\b/ }));
     const listbox = screen.getByRole('listbox');
     const option = screen.getByRole('option', { name: 'Two' });
     rerender(<CustomSelect label="Narrator" value="two" options={options} onChange={onChange} disabled />);
@@ -197,7 +223,7 @@ describe('CustomSelect', () => {
     const { rerender } = render(
       <CustomSelect label="Narrator" value="two" options={options} onChange={onChange} />,
     );
-    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    await user.click(screen.getByRole('button', { name: /^Narrator\b/ }));
     await user.keyboard('{End}');
     rerender(
       <CustomSelect label="Narrator" value="missing" options={[options[0]]} onChange={onChange} />,
@@ -207,7 +233,7 @@ describe('CustomSelect', () => {
     await user.keyboard('{Enter}');
     expect(onChange).toHaveBeenCalledWith('one');
 
-    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    await user.click(screen.getByRole('button', { name: /^Narrator\b/ }));
     rerender(<CustomSelect label="Narrator" value="missing" options={[]} onChange={onChange} />);
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
@@ -219,7 +245,7 @@ describe('CustomSelect', () => {
     const { unmount } = render(
       <CustomSelect label="Narrator" value="two" options={options} onChange={vi.fn()} />,
     );
-    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    const trigger = screen.getByRole('button', { name: /^Narrator\b/ });
 
     await user.click(trigger);
     const firstHandler = addSpy.mock.calls.find(([type]) => type === 'pointerdown')?.[1];
@@ -231,8 +257,6 @@ describe('CustomSelect', () => {
     const secondHandler = pointerAdds[pointerAdds.length - 1][1];
     unmount();
     expect(removeSpy).toHaveBeenCalledWith('pointerdown', secondHandler);
-    addSpy.mockRestore();
-    removeSpy.mockRestore();
   });
 
 });

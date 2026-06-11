@@ -27,33 +27,35 @@ export function CustomSelect({
 }: CustomSelectProps) {
   const id = useId();
   const labelId = `${id}-label`;
+  const valueId = `${id}-value`;
   const listboxId = `${id}-listbox`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
-  const disabledRef = useRef(false);
-  const optionsRef = useRef(options);
-  const previousInputsRef = useRef({ options, value });
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeState, setActiveState] = useState({
+    value: options.find((option) => option.value === value)?.value ?? options[0]?.value,
+    options,
+    controlledValue: value,
+  });
   const isDisabled = disabled || options.length === 0;
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
-  const inputsChanged = previousInputsRef.current.options !== options
-    || previousInputsRef.current.value !== value;
-  const effectiveActiveIndex = inputsChanged
-    ? (selectedIndex >= 0 ? selectedIndex : 0)
-    : Math.min(activeIndex, Math.max(options.length - 1, 0));
+  const inputsChanged = activeState.options !== options || activeState.controlledValue !== value;
+  const preferredActiveValue = inputsChanged
+    ? (selectedOption?.value ?? options[0]?.value)
+    : activeState.value;
+  const effectiveActiveIndex = Math.max(
+    options.findIndex((option) => option.value === preferredActiveValue),
+    0,
+  );
   const isOpen = open && !isDisabled;
-  disabledRef.current = isDisabled;
-  optionsRef.current = options;
-  previousInputsRef.current = { options, value };
 
   const optionId = (index: number) => `${id}-option-${index}`;
 
   const openList = (index = selectedIndex >= 0 ? selectedIndex : 0) => {
     if (isDisabled) return;
-    setActiveIndex(index);
+    setActiveState({ value: options[index]?.value, options, controlledValue: value });
     setOpen(true);
   };
 
@@ -62,9 +64,12 @@ export function CustomSelect({
     triggerRef.current?.focus();
   };
 
-  const selectActiveOption = () => {
-    if (disabledRef.current) return;
-    const option = optionsRef.current[effectiveActiveIndex];
+  const interactionIsDisabled = (target: HTMLElement) =>
+    target.closest('.custom-select')?.querySelector<HTMLButtonElement>('.custom-select__trigger')?.disabled ?? true;
+
+  const selectActiveOption = (target: HTMLElement) => {
+    if (interactionIsDisabled(target)) return;
+    const option = options[effectiveActiveIndex];
     if (!option) return;
     onChange(option.value);
     closeAndRestoreFocus();
@@ -76,8 +81,11 @@ export function CustomSelect({
 
   useEffect(() => {
     if (!open || isDisabled) return;
-    const nextSelectedIndex = options.findIndex((option) => option.value === value);
-    setActiveIndex(nextSelectedIndex >= 0 ? nextSelectedIndex : 0);
+    setActiveState({
+      value: selectedOption?.value ?? options[0]?.value,
+      options,
+      controlledValue: value,
+    });
   }, [options, value]);
 
   useEffect(() => {
@@ -105,28 +113,36 @@ export function CustomSelect({
   };
 
   const handleListboxKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (disabledRef.current) return;
+    if (interactionIsDisabled(event.currentTarget)) return;
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
-        setActiveIndex((index) => (index + 1) % options.length);
+        setActiveState({
+          value: options[(effectiveActiveIndex + 1) % options.length].value,
+          options,
+          controlledValue: value,
+        });
         break;
       case 'ArrowUp':
         event.preventDefault();
-        setActiveIndex((index) => (index - 1 + options.length) % options.length);
+        setActiveState({
+          value: options[(effectiveActiveIndex - 1 + options.length) % options.length].value,
+          options,
+          controlledValue: value,
+        });
         break;
       case 'Home':
         event.preventDefault();
-        setActiveIndex(0);
+        setActiveState({ value: options[0].value, options, controlledValue: value });
         break;
       case 'End':
         event.preventDefault();
-        setActiveIndex(options.length - 1);
+        setActiveState({ value: options[options.length - 1].value, options, controlledValue: value });
         break;
       case 'Enter':
       case ' ':
         event.preventDefault();
-        selectActiveOption();
+        selectActiveOption(event.currentTarget);
         break;
       case 'Escape':
         event.preventDefault();
@@ -145,7 +161,7 @@ export function CustomSelect({
         ref={triggerRef}
         type="button"
         className="custom-select__trigger"
-        aria-labelledby={labelId}
+        aria-labelledby={`${labelId} ${valueId}`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={isOpen ? listboxId : undefined}
@@ -153,7 +169,7 @@ export function CustomSelect({
         onClick={() => (isOpen ? setOpen(false) : openList())}
         onKeyDown={handleTriggerKeyDown}
       >
-        <span className="custom-select__value">{selectedOption?.label ?? placeholder}</span>
+        <span id={valueId} className="custom-select__value">{selectedOption?.label ?? placeholder}</span>
         <ChevronDown className="custom-select__chevron" aria-hidden="true" />
       </button>
       {isOpen ? (
@@ -177,9 +193,13 @@ export function CustomSelect({
                 className={`custom-select__option${active ? ' custom-select__option--active' : ''}${selected ? ' custom-select__option--selected' : ''}`}
                 role="option"
                 aria-selected={selected}
-                onPointerMove={() => setActiveIndex(index)}
-                onClick={() => {
-                  if (disabledRef.current) return;
+                onPointerMove={(event) => {
+                  if (!interactionIsDisabled(event.currentTarget)) {
+                    setActiveState({ value: option.value, options, controlledValue: value });
+                  }
+                }}
+                onClick={(event) => {
+                  if (interactionIsDisabled(event.currentTarget)) return;
                   onChange(option.value);
                   closeAndRestoreFocus();
                 }}
