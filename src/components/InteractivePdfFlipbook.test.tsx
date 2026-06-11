@@ -200,6 +200,7 @@ const originalFullscreenElementDescriptor = Object.getOwnPropertyDescriptor(
 describe('InteractivePdfFlipbook', () => {
   beforeEach(() => {
     vi.useRealTimers();
+    window.localStorage.clear();
     flip.mockClear();
     flipNext.mockClear();
     flipPrev.mockClear();
@@ -265,6 +266,8 @@ describe('InteractivePdfFlipbook', () => {
         setSelectedVoice={vi.fn()}
         speechRate={0}
         setSpeechRate={vi.fn()}
+        speechVolume={0}
+        setSpeechVolume={vi.fn()}
         isNarrationEnabled={false}
         isNarrationLoading={false}
         isNarrationSynthesizing={false}
@@ -278,6 +281,48 @@ describe('InteractivePdfFlipbook', () => {
     );
 
     expect(screen.getByRole('button', { name: /Giọng đọc Không có giọng đọc/ })).toBeDisabled();
+  });
+
+  it('renders narration volume control in the voice settings menu', () => {
+    render(
+      <InteractivePdfFlipbookMenu
+        title="Sách thử nghiệm"
+        currentPage={1}
+        numPages={3}
+        isMenuOpen={true}
+        menuToggleRef={{ current: null }}
+        menuPanelRef={{ current: null }}
+        toggleMenu={vi.fn()}
+        isFullscreen={false}
+        zoom={1}
+        changeZoom={vi.fn()}
+        toggleFullscreen={vi.fn()}
+        toggleThumbnails={vi.fn()}
+        isTtsSettingsOpen={true}
+        toggleTtsSettings={vi.fn()}
+        closeTtsSettings={vi.fn()}
+        isVoiceLoading={false}
+        voiceOptions={[{ value: 'vi-VN-NamMinhNeural', label: 'Nam Minh' }]}
+        selectedVoice="vi-VN-NamMinhNeural"
+        setSelectedVoice={vi.fn()}
+        speechRate={0}
+        setSpeechRate={vi.fn()}
+        speechVolume={0}
+        setSpeechVolume={vi.fn()}
+        isNarrationEnabled={false}
+        isNarrationLoading={false}
+        isNarrationSynthesizing={false}
+        toggleNarration={vi.fn()}
+        isAutoFlipEnabled={false}
+        setIsAutoFlipEnabled={vi.fn()}
+        currentPageIndex={0}
+        flipToPage={vi.fn()}
+        narrationError={null}
+      />,
+    );
+
+    expect(screen.getByLabelText('Âm lượng')).toHaveValue('0');
+    expect(screen.getAllByText('Bình thường')).toHaveLength(2);
   });
 
   it('keeps the split reader UI labels and audio elements intact', async () => {
@@ -299,7 +344,7 @@ describe('InteractivePdfFlipbook', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mở menu điều khiển' }));
 
     expect(screen.getByRole('navigation', { name: 'Menu điều khiển trình đọc' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cài đặt TTS' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cài đặt giọng đọc' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /hình thu nhỏ/i }));
 
@@ -456,7 +501,7 @@ describe('InteractivePdfFlipbook', () => {
     expect(screen.getByText('Trang 1 / 3')).toBeInTheDocument();
   });
 
-  it('anchors the reader menu to the hamburger bottom corner', async () => {
+  it('anchors the open reader menu below the hamburger toggle', async () => {
     render(
       <InteractivePdfFlipbook
         title="Demo book"
@@ -469,41 +514,16 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     const menuToggle = screen.getByRole('button', { name: /mở menu điều khiển/i });
-    const shell = screen.getByLabelText('Trình đọc tương tác cho Demo book').querySelector(
-      '.interactive-reader__shell',
-    ) as HTMLElement;
-
-    vi.spyOn(menuToggle, 'getBoundingClientRect').mockReturnValue({
-      x: 1012,
-      y: 112,
-      width: 48,
-      height: 48,
-      top: 112,
-      right: 1060,
-      bottom: 160,
-      left: 1012,
-      toJSON: () => undefined,
-    });
-    vi.spyOn(shell, 'getBoundingClientRect').mockReturnValue({
-      x: 120,
-      y: 96,
-      width: 960,
-      height: 720,
-      top: 96,
-      right: 1080,
-      bottom: 816,
-      left: 120,
-      toJSON: () => undefined,
-    });
 
     fireEvent.click(menuToggle);
 
+    const closeToggle = screen.getByRole('button', { name: /đóng menu điều khiển/i });
     const menuPanel = screen.getByLabelText('Menu điều khiển trình đọc');
+    const menuAnchor = closeToggle.closest('.interactive-reader__menu-anchor');
 
-    expect(menuPanel).toHaveStyle({
-      top: '64px',
-      left: '620px',
-    });
+    expect(closeToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(closeToggle.querySelector('.lucide-x')).toBeInTheDocument();
+    expect(menuAnchor).toContainElement(menuPanel);
   });
 
   it('moves the reader menu into fullscreen content so it remains visible', async () => {
@@ -1598,6 +1618,146 @@ describe('InteractivePdfFlipbook', () => {
     expect(screen.queryByLabelText('Âm thanh kể chuyện cho Demo book')).toBeNull();
   });
 
+  it('restores and saves global narration settings from localStorage', async () => {
+    window.localStorage.setItem(
+      'interactivePdfFlipbook:narrationSettings:v1',
+      JSON.stringify({
+        selectedVoice: 'vi-VN-HoaiMyNeural',
+        speechRate: 20,
+        speechVolume: -15,
+      }),
+    );
+
+    window.edgeTts = {
+      synthesize: vi.fn(),
+      getVoices: vi.fn(async () => [
+        { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
+        { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      ]),
+    };
+
+    render(<InteractivePdfFlipbook title="Sách thử nghiệm" pdfPath="/books/book.pdf" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+    expect(await screen.findByRole('button', { name: /Hoài My/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tốc độ đọc')).toHaveValue('20');
+    expect(screen.getByLabelText('Âm lượng')).toHaveValue('-15');
+
+    fireEvent.change(screen.getByLabelText('Âm lượng'), { target: { value: '10' } });
+
+    await waitFor(() => {
+      expect(
+        JSON.parse(window.localStorage.getItem('interactivePdfFlipbook:narrationSettings:v1') || '{}'),
+      ).toEqual({
+        selectedVoice: 'vi-VN-HoaiMyNeural',
+        speechRate: 20,
+        speechVolume: 10,
+      });
+    });
+  });
+
+  it('falls back to narration defaults for malformed persisted field types', async () => {
+    window.localStorage.setItem(
+      'interactivePdfFlipbook:narrationSettings:v1',
+      JSON.stringify({
+        selectedVoice: 42,
+        speechRate: '25',
+        speechVolume: '-15',
+      }),
+    );
+    window.edgeTts = {
+      synthesize: vi.fn(),
+      getVoices: vi.fn(async () => [
+        { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      ]),
+    };
+
+    render(<InteractivePdfFlipbook title="Sách thử nghiệm" pdfPath="/books/book.pdf" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+    expect(await screen.findByRole('button', { name: /Giọng đọc Hoài My/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tốc độ đọc')).toHaveValue('0');
+    expect(screen.getByLabelText('Âm lượng')).toHaveValue('0');
+  });
+
+  it('normalizes valid persisted narration percentages to their limits and step', async () => {
+    window.localStorage.setItem(
+      'interactivePdfFlipbook:narrationSettings:v1',
+      JSON.stringify({
+        selectedVoice: 'vi-VN-HoaiMyNeural',
+        speechRate: 53,
+        speechVolume: -47,
+      }),
+    );
+    window.edgeTts = {
+      synthesize: vi.fn(),
+      getVoices: vi.fn(async () => [
+        { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      ]),
+    };
+
+    render(<InteractivePdfFlipbook title="Sách thử nghiệm" pdfPath="/books/book.pdf" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+    expect(await screen.findByRole('button', { name: /Giọng đọc Hoài My/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Tốc độ đọc')).toHaveValue('50');
+    expect(screen.getByLabelText('Âm lượng')).toHaveValue('-45');
+  });
+
+  it('uses the default voice when a persisted voice is unavailable and no voices are returned', async () => {
+    window.localStorage.setItem(
+      'interactivePdfFlipbook:narrationSettings:v1',
+      JSON.stringify({ selectedVoice: 'vi-VN-MissingNeural', speechRate: 0, speechVolume: 0 }),
+    );
+    window.edgeTts = { synthesize: vi.fn(), getVoices: vi.fn(async () => []) };
+
+    render(<InteractivePdfFlipbook title="Sách thử nghiệm" pdfPath="/books/book.pdf" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+    expect(await screen.findByRole('button', { name: /Giọng đọc Hoài My/ })).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      availableVoices: [
+        { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      ],
+      expectedVoice: 'Hoài My',
+    },
+    {
+      availableVoices: [
+        { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
+      ],
+      expectedVoice: 'Nam Minh',
+    },
+  ])(
+    'uses $expectedVoice when the persisted voice is unavailable',
+    async ({ availableVoices, expectedVoice }) => {
+      window.localStorage.setItem(
+        'interactivePdfFlipbook:narrationSettings:v1',
+        JSON.stringify({ selectedVoice: 'vi-VN-MissingNeural', speechRate: 0, speechVolume: 0 }),
+      );
+      window.edgeTts = { synthesize: vi.fn(), getVoices: vi.fn(async () => availableVoices) };
+
+      render(<InteractivePdfFlipbook title="Sách thử nghiệm" pdfPath="/books/book.pdf" />);
+
+      fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+      fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+      expect(
+        await screen.findByRole('button', { name: new RegExp(`Giọng đọc ${expectedVoice}`) }),
+      ).toBeInTheDocument();
+    },
+  );
+
   it('passes different cache keys when the narration voice changes', async () => {
     const synthesize = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
     const getVoices = vi.fn(async () => [
@@ -1622,7 +1782,7 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
 
     await waitFor(() =>
@@ -1681,7 +1841,7 @@ describe('InteractivePdfFlipbook', () => {
     await screen.findByText('PDF page 1');
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
 
     await waitFor(() =>
@@ -1713,6 +1873,70 @@ describe('InteractivePdfFlipbook', () => {
     expect(getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(0)?.[0].rate).not.toBe(
       getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(-1)?.[0].rate,
     );
+  });
+
+  it('passes different cache keys when the narration volume changes', async () => {
+    const synthesize = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
+    const getVoices = vi.fn(async () => [
+      { ShortName: 'vi-VN-HoaiMyNeural', FriendlyName: 'Hoài My', Locale: 'vi-VN' },
+      { ShortName: 'vi-VN-NamMinhNeural', FriendlyName: 'Nam Minh', Locale: 'vi-VN' },
+    ]);
+    const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ volume }: { volume: string }) => ({
+      audioPath: `C:\\Temp\\flipbook-cache\\${volume || 'default'}.mp3`,
+      cacheHit: false,
+    }));
+    const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
+    const readExtractedTextPage = vi.fn(async (_filePath: string, pageNumber: number) =>
+      pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
+    );
+
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.edgeTts = { synthesize, getVoices };
+    window.debugTools = { writeExtractedText, readExtractedTextPage };
+
+    const { unmount } = render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.change(screen.getByLabelText('Âm lượng'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bookKey: 'Demo book',
+          voice: 'vi-VN-NamMinhNeural',
+          rate: '',
+          volume: '+20%',
+          chunkIndex: 0,
+          chunkText: 'Nội dung đọc từ file text trang một',
+        }),
+      ),
+    );
+
+    unmount();
+    window.localStorage.clear();
+    getOrCreateEdgeTtsAudioCacheFile.mockClear();
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(getOrCreateEdgeTtsAudioCacheFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          volume: '',
+        }),
+      ),
+    );
+
+    expect(getOrCreateEdgeTtsAudioCacheFile.mock.calls.at(0)?.[0].volume).not.toBe('+20%');
   });
 
   it('resolves public asset paths against the Vite base URL', () => {

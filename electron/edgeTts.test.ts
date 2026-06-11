@@ -277,7 +277,7 @@ describe('edge TTS python bridge', () => {
   it('returns a cached audio URL on a fresh cache hit', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
     });
 
@@ -295,9 +295,9 @@ describe('edge TTS python bridge', () => {
       }),
     ).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
     });
     expect(mocks.createHash).toHaveBeenCalledWith('sha256');
@@ -306,7 +306,7 @@ describe('edge TTS python bridge', () => {
   it('returns a fresh prepared cache file without synthesizing or writing on a cache hit', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
     });
 
@@ -324,9 +324,9 @@ describe('edge TTS python bridge', () => {
       }),
     ).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
     });
     expect(mocks.spawn).not.toHaveBeenCalled();
@@ -361,22 +361,22 @@ describe('edge TTS python bridge', () => {
 
     await expect(cachePromise).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
     expect(mocks.mkdir).toHaveBeenCalledWith(
-      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__',
+      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__',
       { recursive: true },
     );
     expect(mocks.writeFile).toHaveBeenCalledWith(
-      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
+      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
       new Uint8Array([1, 2, 3]),
     );
     expect(mocks.rename).toHaveBeenCalledWith(
-      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
-      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
+      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
     );
   });
 
@@ -405,7 +405,7 @@ describe('edge TTS python bridge', () => {
 
     await expect(cachePromise).rejects.toThrow('rename failed');
     expect(mocks.rm).toHaveBeenCalledWith(
-      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
+      'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
       { force: true },
     );
   });
@@ -413,7 +413,7 @@ describe('edge TTS python bridge', () => {
   it('produces the same cache path for the same inputs', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
     });
 
@@ -444,7 +444,7 @@ describe('edge TTS python bridge', () => {
   it('passes the cache ttl to lookup', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
 
@@ -487,9 +487,9 @@ describe('edge TTS python bridge', () => {
       }),
     ).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
   });
@@ -497,7 +497,7 @@ describe('edge TTS python bridge', () => {
   it('treats cache entries older than 30 days as stale and re-synthesized', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
 
@@ -524,7 +524,7 @@ describe('edge TTS python bridge', () => {
   it('uses a different cache path when the voice changes', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-NamMinhNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-NamMinhNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
 
@@ -542,9 +542,9 @@ describe('edge TTS python bridge', () => {
       }),
     ).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-NamMinhNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-NamMinhNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-NamMinhNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-NamMinhNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
   });
@@ -552,7 +552,7 @@ describe('edge TTS python bridge', () => {
   it('uses a different cache path when the speech rate changes', async () => {
     const lookup = vi.fn().mockResolvedValue({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\+25%\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\+25%\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
 
@@ -570,10 +570,100 @@ describe('edge TTS python bridge', () => {
       }),
     ).resolves.toEqual({
       audioPath:
-        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\+25%\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\+25%\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
       audioUrl:
-        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/+25%25/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/+25%25/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
     });
+  });
+
+  it('uses different cache paths for different narration volumes', async () => {
+    const lookup = vi.fn(async ({ audioPath }) => ({ audioPath, cacheHit: false }));
+
+    const { getOrCreateEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+
+    const quietResult = await getOrCreateEdgeTtsAudioCacheFile({
+      userDataPath: 'C:\\Temp\\flipbook-user-data',
+      bookKey: 'Sách thử nghiệm',
+      voice: 'vi-VN-NamMinhNeural',
+      rate: '',
+      volume: '-10%',
+      chunkIndex: 0,
+      chunkText: 'Một đoạn văn bản.',
+      lookup,
+    });
+
+    const loudResult = await getOrCreateEdgeTtsAudioCacheFile({
+      userDataPath: 'C:\\Temp\\flipbook-user-data',
+      bookKey: 'Sách thử nghiệm',
+      voice: 'vi-VN-NamMinhNeural',
+      rate: '',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Một đoạn văn bản.',
+      lookup,
+    });
+
+    expect(quietResult.audioPath).not.toBe(loudResult.audioPath);
+    expect(quietResult.audioPath).toContain('-10%');
+    expect(loudResult.audioPath).toContain('+10%');
+  });
+
+  it('falls back to a legacy cache path when default volume misses the new path', async () => {
+    const lookup = vi
+      .fn()
+      .mockResolvedValueOnce({ cacheHit: false })
+      .mockImplementationOnce(async ({ audioPath }) => ({ audioPath, cacheHit: true }));
+
+    const { getOrCreateEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+
+    const result = await getOrCreateEdgeTtsAudioCacheFile({
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      volume: '',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    });
+
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(lookup.mock.calls[0]?.[0].audioPath).toContain(
+      '\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-',
+    );
+    expect(lookup.mock.calls[1]?.[0].audioPath).toContain(
+      '\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-',
+    );
+    expect(result).toEqual({
+      audioPath:
+        'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3',
+      audioUrl:
+        'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
+      cacheHit: true,
+    });
+  });
+
+  it('does not look up a legacy cache path for non-default volume', async () => {
+    const lookup = vi.fn().mockResolvedValue({ cacheHit: false });
+
+    const { getOrCreateEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+
+    const result = await getOrCreateEdgeTtsAudioCacheFile({
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    });
+
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(result.audioPath).toContain(
+      '\\vi-VN-HoaiMyNeural\\__default__\\+10%\\chunk-0-',
+    );
+    expect(result.cacheHit).toBe(false);
   });
 });

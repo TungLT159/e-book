@@ -66,6 +66,8 @@ export function InteractivePdfFlipbook({
         setSelectedVoice={state.setSelectedVoice}
         speechRate={state.speechRate}
         setSpeechRate={state.setSpeechRate}
+        speechVolume={state.speechVolume}
+        setSpeechVolume={state.setSpeechVolume}
         isNarrationEnabled={state.isNarrationEnabled}
         isNarrationLoading={state.isNarrationLoading}
         isNarrationSynthesizing={state.isNarrationSynthesizing}

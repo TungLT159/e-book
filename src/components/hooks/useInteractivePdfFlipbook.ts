@@ -23,6 +23,8 @@ const FLIPPING_TIME = 650;
 const PAGE_FLIP_SOUND_PATH = '/Audio/effects/page-flip.mp3';
 const NARRATION_VOICE = 'vi-VN-NamMinhNeural';
 const DEFAULT_NARRATION_RATE = 0;
+const DEFAULT_NARRATION_VOLUME = 0;
+const NARRATION_SETTINGS_STORAGE_KEY = 'interactivePdfFlipbook:narrationSettings:v1';
 const NARRATION_PRELOAD_LOOKAHEAD = 1;
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 1.35;
@@ -52,6 +54,12 @@ type EdgeTtsVoice = {
   FriendlyName?: string;
   Locale?: string;
   Name?: string;
+};
+
+type NarrationSettings = {
+  selectedVoice: string;
+  speechRate: number;
+  speechVolume: number;
 };
 
 type ViewportSize = {
@@ -89,6 +97,7 @@ type UseInteractivePdfFlipbookResult = {
   voiceOptions: NarrationVoiceOption[];
   selectedVoice: string;
   speechRate: number;
+  speechVolume: number;
   pageNarrationTexts: string[];
   narrationError: string | null;
   setNumPages: Dispatch<SetStateAction<number>>;
@@ -112,6 +121,7 @@ type UseInteractivePdfFlipbookResult = {
   setIsThumbnailPanelOpen: Dispatch<SetStateAction<boolean>>;
   setSelectedVoice: Dispatch<SetStateAction<string>>;
   setSpeechRate: Dispatch<SetStateAction<number>>;
+  setSpeechVolume: Dispatch<SetStateAction<number>>;
   closeMenu: () => void;
   toggleMenu: () => void;
   toggleTtsSettings: () => void;
@@ -129,6 +139,46 @@ type UseInteractivePdfFlipbookResult = {
   onFlipbookInit: () => void;
 };
 
+function clampNarrationPercentage(value: unknown, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+
+  const steppedValue = Math.round(value / 5) * 5;
+  return Math.min(50, Math.max(-50, steppedValue));
+}
+
+function readStoredNarrationSettings(): NarrationSettings {
+  const defaults = {
+    selectedVoice: NARRATION_VOICE,
+    speechRate: DEFAULT_NARRATION_RATE,
+    speechVolume: DEFAULT_NARRATION_VOLUME,
+  };
+
+  try {
+    const rawSettings = window.localStorage.getItem(NARRATION_SETTINGS_STORAGE_KEY);
+    if (!rawSettings) return defaults;
+
+    const parsedSettings = JSON.parse(rawSettings) as Partial<NarrationSettings>;
+    return {
+      selectedVoice:
+        typeof parsedSettings.selectedVoice === 'string' && parsedSettings.selectedVoice.trim()
+          ? parsedSettings.selectedVoice
+          : defaults.selectedVoice,
+      speechRate: clampNarrationPercentage(parsedSettings.speechRate, defaults.speechRate),
+      speechVolume: clampNarrationPercentage(parsedSettings.speechVolume, defaults.speechVolume),
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function writeStoredNarrationSettings(settings: NarrationSettings) {
+  try {
+    window.localStorage.setItem(NARRATION_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Preference persistence should never block reading.
+  }
+}
+
 export function useInteractivePdfFlipbook({
   title,
   pdfPath,
@@ -137,6 +187,7 @@ export function useInteractivePdfFlipbook({
   isReadingProgressLoaded = true,
   onProgressChange,
 }: UseInteractivePdfFlipbookProps): UseInteractivePdfFlipbookResult {
+  const [initialNarrationSettings] = useState(readStoredNarrationSettings);
   const [numPages, setNumPages] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -159,8 +210,9 @@ export function useInteractivePdfFlipbook({
   const [voiceOptions, setVoiceOptions] = useState<NarrationVoiceOption[]>([
     { value: NARRATION_VOICE, label: 'Hoài My (vi-VN)' },
   ]);
-  const [selectedVoice, setSelectedVoice] = useState(NARRATION_VOICE);
-  const [speechRate, setSpeechRate] = useState(DEFAULT_NARRATION_RATE);
+  const [selectedVoice, setSelectedVoice] = useState(initialNarrationSettings.selectedVoice);
+  const [speechRate, setSpeechRateState] = useState(initialNarrationSettings.speechRate);
+  const [speechVolume, setSpeechVolumeState] = useState(initialNarrationSettings.speechVolume);
   const [pageNarrationTexts, setPageNarrationTexts] = useState<string[]>([]);
   const [narrationError, setNarrationError] = useState<string | null>(null);
   const readerRef = useRef<HTMLElement | null>(null);
@@ -221,9 +273,31 @@ export function useInteractivePdfFlipbook({
     isNarrationPausedRef.current = isNarrationPaused;
   }, [isNarrationPaused]);
 
-  const formatNarrationRate = useCallback((rate: number) => {
-    if (rate === 0) return undefined;
-    return `${rate > 0 ? '+' : ''}${rate}%`;
+  const setSpeechRate: Dispatch<SetStateAction<number>> = useCallback((value) => {
+    setSpeechRateState((currentValue) =>
+      clampNarrationPercentage(
+        typeof value === 'function' ? value(currentValue) : value,
+        currentValue,
+      ),
+    );
+  }, []);
+
+  const setSpeechVolume: Dispatch<SetStateAction<number>> = useCallback((value) => {
+    setSpeechVolumeState((currentValue) =>
+      clampNarrationPercentage(
+        typeof value === 'function' ? value(currentValue) : value,
+        currentValue,
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    writeStoredNarrationSettings({ selectedVoice, speechRate, speechVolume });
+  }, [selectedVoice, speechRate, speechVolume]);
+
+  const formatNarrationPercentage = useCallback((percentage: number) => {
+    if (percentage === 0) return undefined;
+    return `${percentage > 0 ? '+' : ''}${percentage}%`;
   }, []);
 
   const isPageVisibleInCurrentSpread = useCallback((pageIndex: number) => {
@@ -272,7 +346,7 @@ export function useInteractivePdfFlipbook({
   const preloadNextNarrationPage = useCallback(
     (
       pageIndex: number,
-      narrationOptions: { voice: string; rate?: string },
+      narrationOptions: { voice: string; rate?: string; volume?: string },
       narrationRequestId: number,
     ) => {
       const nextPageIndex = pageIndex + NARRATION_PRELOAD_LOOKAHEAD;
@@ -317,6 +391,7 @@ export function useInteractivePdfFlipbook({
             bookKey: title,
             voice: narrationOptions.voice,
             rate: narrationOptions.rate || '',
+            volume: narrationOptions.volume || '',
             chunkIndex: nextPageIndex,
             chunkText,
           });
@@ -810,7 +885,7 @@ export function useInteractivePdfFlipbook({
 
         if (!voices?.length) {
           setVoiceOptions([{ value: NARRATION_VOICE, label: 'Hoài My (vi-VN)' }]);
-          setSelectedVoice((currentVoice) => currentVoice || NARRATION_VOICE);
+          setSelectedVoice(NARRATION_VOICE);
           return;
         }
 
@@ -905,36 +980,6 @@ export function useInteractivePdfFlipbook({
 
     return () => window.cancelAnimationFrame(frameId);
   }, [isFullscreen, readerZoom]);
-
-  useLayoutEffect(() => {
-    if (!isMenuOpen) return undefined;
-
-    const updateMenuPosition = () => {
-      const toggleButton = menuToggleRef.current;
-      if (!toggleButton) return;
-
-      const rect = toggleButton.getBoundingClientRect();
-      const shellRect = toggleButton.closest('.interactive-reader')?.querySelector('.interactive-reader__shell')?.getBoundingClientRect();
-      const width = 320;
-      const containerLeft = shellRect?.left ?? 0;
-      const containerTop = shellRect?.top ?? 0;
-      const containerWidth = shellRect?.width ?? (window.innerWidth || document.documentElement.clientWidth);
-      const left = Math.max(8, Math.min(rect.right - containerLeft - width, containerWidth - width - 8));
-      const top = Math.max(8, rect.bottom - containerTop);
-
-      menuPanelRef.current?.style.setProperty('top', `${top}px`);
-      menuPanelRef.current?.style.setProperty('left', `${left}px`);
-    };
-
-    updateMenuPosition();
-    window.addEventListener('resize', updateMenuPosition);
-    window.addEventListener('scroll', updateMenuPosition, true);
-
-    return () => {
-      window.removeEventListener('resize', updateMenuPosition);
-      window.removeEventListener('scroll', updateMenuPosition, true);
-    };
-  }, [isMenuOpen]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1081,9 +1126,12 @@ export function useInteractivePdfFlipbook({
           throw new Error('Edge TTS is unavailable.');
         }
 
+        const narrationRate = formatNarrationPercentage(speechRate);
+        const narrationVolume = formatNarrationPercentage(speechVolume);
         const narrationOptions = {
           voice: selectedVoice,
-          ...(formatNarrationRate(speechRate) ? { rate: formatNarrationRate(speechRate) } : {}),
+          ...(narrationRate ? { rate: narrationRate } : {}),
+          ...(narrationVolume ? { volume: narrationVolume } : {}),
         };
 
         const audioCache = window.audioCache;
@@ -1092,6 +1140,7 @@ export function useInteractivePdfFlipbook({
               bookKey: title,
               voice: narrationOptions.voice,
               rate: narrationOptions.rate || '',
+              volume: narrationOptions.volume || '',
               chunkIndex: narrationPageIndex,
               chunkText: narrationText,
             })
@@ -1177,7 +1226,8 @@ export function useInteractivePdfFlipbook({
     preloadNextNarrationPage,
     selectedVoice,
     speechRate,
-    formatNarrationRate,
+    speechVolume,
+    formatNarrationPercentage,
   ]);
 
   useEffect(() => {
@@ -1216,7 +1266,7 @@ export function useInteractivePdfFlipbook({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      const settingsButton = readerRef.current?.querySelector('button[aria-label="Cài đặt TTS"]');
+      const settingsButton = readerRef.current?.querySelector('button[aria-label="Cài đặt giọng đọc"]');
       const submenu = readerRef.current?.querySelector('.interactive-reader__tts-submenu');
 
       if (submenu && !submenu.contains(target) && settingsButton && !settingsButton.contains(target)) {
@@ -1251,6 +1301,7 @@ export function useInteractivePdfFlipbook({
     voiceOptions,
     selectedVoice,
     speechRate,
+    speechVolume,
     pageNarrationTexts,
     narrationError,
     setNumPages,
@@ -1274,6 +1325,7 @@ export function useInteractivePdfFlipbook({
     setIsThumbnailPanelOpen,
     setSelectedVoice,
     setSpeechRate,
+    setSpeechVolume,
     closeMenu,
     toggleMenu,
     toggleTtsSettings,

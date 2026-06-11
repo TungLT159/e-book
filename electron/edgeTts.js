@@ -111,7 +111,23 @@ function buildAudioCacheResult(audioPath, cacheHit) {
   };
 }
 
-function buildEdgeTtsCachePath({ userDataPath, bookKey, voice, rate, chunkIndex, chunkText }) {
+function buildEdgeTtsCachePath({ userDataPath, bookKey, voice, rate, volume, chunkIndex, chunkText }) {
+  const safeRate = rate ? sanitizePathSegment(rate) : '__default__';
+  const safeVolume = volume ? sanitizePathSegment(volume) : '__default__';
+  const chunkKey = `chunk-${chunkIndex}-${fingerprintChunkText(chunkText)}`;
+
+  return join(
+    userDataPath,
+    'narration-audio',
+    sanitizePathSegment(bookKey),
+    sanitizePathSegment(voice),
+    safeRate || '__default__',
+    safeVolume || '__default__',
+    `${sanitizePathSegment(chunkKey)}.mp3`,
+  );
+}
+
+function buildLegacyEdgeTtsCachePath({ userDataPath, bookKey, voice, rate, chunkIndex, chunkText }) {
   const safeRate = rate ? sanitizePathSegment(rate) : '__default__';
   const chunkKey = `chunk-${chunkIndex}-${fingerprintChunkText(chunkText)}`;
 
@@ -130,15 +146,32 @@ export async function getOrCreateEdgeTtsAudioCacheFile({
   bookKey,
   voice,
   rate,
+  volume,
   chunkIndex,
   chunkText,
   lookup,
 }) {
-  const audioPath = buildEdgeTtsCachePath({ userDataPath, bookKey, voice, rate, chunkIndex, chunkText });
+  const audioPath = buildEdgeTtsCachePath({ userDataPath, bookKey, voice, rate, volume, chunkIndex, chunkText });
   const result = await lookup({ audioPath, ttlMs: AUDIO_CACHE_TTL_MS });
 
   if (result?.cacheHit) {
     return buildAudioCacheResult(result.audioPath || audioPath, true);
+  }
+
+  if (!volume) {
+    const legacyAudioPath = buildLegacyEdgeTtsCachePath({
+      userDataPath,
+      bookKey,
+      voice,
+      rate,
+      chunkIndex,
+      chunkText,
+    });
+    const legacyResult = await lookup({ audioPath: legacyAudioPath, ttlMs: AUDIO_CACHE_TTL_MS });
+
+    if (legacyResult?.cacheHit) {
+      return buildAudioCacheResult(legacyResult.audioPath || legacyAudioPath, true);
+    }
   }
 
   return buildAudioCacheResult(audioPath, false);
@@ -149,6 +182,7 @@ export async function prepareEdgeTtsAudioCacheFile({
   bookKey,
   voice,
   rate,
+  volume,
   chunkIndex,
   chunkText,
   lookup,
@@ -158,6 +192,7 @@ export async function prepareEdgeTtsAudioCacheFile({
     bookKey,
     voice,
     rate,
+    volume,
     chunkIndex,
     chunkText,
     lookup,
@@ -167,7 +202,7 @@ export async function prepareEdgeTtsAudioCacheFile({
     return cacheResult;
   }
 
-  const audio = await synthesizeEdgeTts(chunkText, { voice, rate });
+  const audio = await synthesizeEdgeTts(chunkText, { voice, rate, volume });
   if (audio.length === 0) {
     return cacheResult;
   }

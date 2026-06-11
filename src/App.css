@@ -520,6 +520,12 @@ button {
 
 /* ───── Reader: Hamburger Menu Toggle ───── */
 
+.interactive-reader__menu-anchor {
+  position: relative;
+  z-index: 40;
+  flex: 0 0 auto;
+}
+
 .interactive-reader__menu-toggle {
   width: 48px;
   height: 48px;
@@ -550,8 +556,8 @@ button {
 .interactive-reader__menu-panel {
   position: absolute;
   z-index: 40;
-  top: 72px;
-  right: 16px;
+  top: calc(100% + 8px);
+  right: 0;
   width: min(360px, calc(100vw - 32px));
   padding: var(--space-4);
   border-radius: var(--doodle-radius);
@@ -563,6 +569,10 @@ button {
 .interactive-reader__menu-sections {
   display: grid;
   gap: var(--space-4);
+  max-height: calc(100vh - 140px);
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .menu-section {
@@ -808,13 +818,12 @@ button {
 /* ───── Reader: TTS Settings ───── */
 
 .interactive-reader__tts-submenu {
-  position: absolute;
-  top: 0;
-  right: calc(100% + 12px);
+  position: static;
   z-index: 41;
   display: grid;
   gap: var(--space-3);
-  width: min(320px, calc(100vw - 48px));
+  width: 100%;
+  margin-top: var(--space-3);
   padding: var(--space-4);
   border-radius: var(--doodle-radius-sm);
   background: var(--doodle-bg);
@@ -1659,8 +1668,6 @@ label.interactive-reader__tts-field > span {
   }
 
   .interactive-reader__menu-panel {
-    top: 64px;
-    right: 12px;
     width: min(340px, calc(100vw - 24px));
   }
 

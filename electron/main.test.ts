@@ -103,7 +103,7 @@ describe('audio cache ipc bridge', () => {
         chunkText: 'Nội dung đọc từ file text trang một',
       }),
     ).resolves.toEqual({
-      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-'),
+      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-'),
       audioUrl: expect.stringMatching(/^file:\/\/\/C:\/Temp\/flipbook-react-electron\/narration-audio\//),
       cacheHit: true,
     });
@@ -152,6 +152,7 @@ describe('audio cache ipc bridge', () => {
       bookKey: '',
       voice: 'vi-VN-HoaiMyNeural',
       rate: '',
+      volume: '',
       chunkIndex: 2,
       chunkText: 'Nội dung đọc từ file text trang một',
       lookup: expect.any(Function),
@@ -160,7 +161,9 @@ describe('audio cache ipc bridge', () => {
 
   it('returns a cache miss when the mp3 is stale', async () => {
     const now = Date.now();
-    mocks.stat.mockResolvedValueOnce({ mtimeMs: now - (31 * 24 * 60 * 60 * 1000) } as never);
+    mocks.stat
+      .mockResolvedValueOnce({ mtimeMs: now - (31 * 24 * 60 * 60 * 1000) } as never)
+      .mockRejectedValueOnce(Object.assign(new Error('missing legacy cache'), { code: 'ENOENT' }));
 
     await import('./main.js');
 
@@ -183,13 +186,13 @@ describe('audio cache ipc bridge', () => {
         chunkText: 'Nội dung đọc từ file text trang một',
       }),
     ).resolves.toEqual({
-      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-'),
+      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-'),
       audioUrl: expect.stringMatching(/^file:\/\/\/C:\/Temp\/flipbook-react-electron\/narration-audio\//),
       cacheHit: false,
     });
-    expect(mocks.stat).toHaveBeenCalledTimes(1);
+    expect(mocks.stat).toHaveBeenCalledTimes(2);
     expect(mocks.rm).toHaveBeenCalledWith(
-      expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-'),
+      expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-'),
       expect.objectContaining({ force: true }),
     );
   });
@@ -219,7 +222,7 @@ describe('audio cache ipc bridge', () => {
         chunkText: 'Nội dung đọc từ file text trang một',
       }),
     ).resolves.toEqual({
-      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-'),
+      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-'),
       audioUrl: expect.stringMatching(/^file:\/\/\/C:\/Temp\/flipbook-react-electron\/narration-audio\//),
       cacheHit: true,
     });
@@ -227,7 +230,7 @@ describe('audio cache ipc bridge', () => {
   });
 
   it('returns a cache miss when the mp3 is missing', async () => {
-    mocks.stat.mockRejectedValueOnce(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+    mocks.stat.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }));
 
     await import('./main.js');
 
@@ -250,11 +253,11 @@ describe('audio cache ipc bridge', () => {
         chunkText: 'Nội dung đọc từ file text trang một',
       }),
     ).resolves.toEqual({
-      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\chunk-0-'),
+      audioPath: expect.stringContaining('C:\\Temp\\flipbook-react-electron\\narration-audio\\Demo book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-'),
       audioUrl: expect.stringMatching(/^file:\/\/\/C:\/Temp\/flipbook-react-electron\/narration-audio\//),
       cacheHit: false,
     });
-    expect(mocks.stat).toHaveBeenCalledTimes(1);
+    expect(mocks.stat).toHaveBeenCalledTimes(2);
   });
 });
 

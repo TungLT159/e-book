@@ -17,7 +17,7 @@ export type ReadingProgressStore = {
 declare global {
   interface Window {
     edgeTts?: {
-      synthesize: (text: string, options?: { voice?: string; rate?: string }) => Promise<ArrayBuffer | Uint8Array>;
+      synthesize: (text: string, options?: { voice?: string; rate?: string; volume?: string }) => Promise<ArrayBuffer | Uint8Array>;
       getVoices?: () => Promise<Array<{
         ShortName?: string;
         FriendlyName?: string;
@@ -30,6 +30,7 @@ declare global {
         bookKey: string;
         voice: string;
         rate: string;
+        volume: string;
         chunkIndex: number;
         chunkText: string;
       }) => Promise<{ audioPath: string; audioUrl?: string; cacheHit: boolean }>;
@@ -37,6 +38,7 @@ declare global {
         bookKey: string;
         voice: string;
         rate: string;
+        volume: string;
         chunkIndex: number;
         chunkText: string;
       }) => Promise<{ audioPath: string; audioUrl?: string; cacheHit: boolean }>;

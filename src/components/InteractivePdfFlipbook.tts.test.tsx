@@ -85,6 +85,7 @@ vi.mock('pdfjs-dist', () => ({
 describe('InteractivePdfFlipbook narration', () => {
   beforeEach(() => {
     vi.useRealTimers();
+    window.localStorage.clear();
     flipNext.mockClear();
     flipPrev.mockClear();
     flipTo.mockClear();
@@ -212,7 +213,7 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
 
     const voiceTrigger = await screen.findByRole('button', { name: /^Giọng đọc\b/ });
     fireEvent.click(voiceTrigger);
@@ -231,6 +232,31 @@ describe('InteractivePdfFlipbook narration', () => {
     );
   });
 
+  it('passes narration volume from persisted settings without a neutral speech rate', async () => {
+    window.localStorage.setItem(
+      'interactivePdfFlipbook:narrationSettings:v1',
+      JSON.stringify({
+        selectedVoice: 'vi-VN-NamMinhNeural',
+        speechRate: 0,
+        speechVolume: 15,
+      }),
+    );
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() =>
+      expect(synthesize).toHaveBeenCalledWith('Nội dung đọc từ file text trang một', {
+        voice: 'vi-VN-NamMinhNeural',
+        volume: '+15%',
+      }),
+    );
+  });
+
   it('disables the narration voice control while voices are loading', async () => {
     getVoices.mockImplementationOnce(() => new Promise(() => undefined));
 
@@ -238,7 +264,7 @@ describe('InteractivePdfFlipbook narration', () => {
 
     expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
-    fireEvent.click(screen.getByRole('button', { name: /cài đặt tts/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
 
     expect(screen.getByRole('button', { name: /^Giọng đọc\b/ })).toBeDisabled();
   });
@@ -427,10 +453,13 @@ describe('InteractivePdfFlipbook narration', () => {
     );
     expect(screen.queryByRole('button', { name: /tạm dừng đọc/i })).not.toBeInTheDocument();
 
+    await waitFor(() => expect(synthesize).toHaveBeenCalledTimes(1));
+
     await act(async () => {
       resolveSynthesize(new Uint8Array([1, 2, 3]).buffer);
     });
 
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /đọc trang tiếp theo/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /đọc trang trước/i })).toBeDisabled();

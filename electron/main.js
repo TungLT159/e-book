@@ -168,6 +168,7 @@ ipcMain.handle('audio-cache:get-or-create-edge-tts-audio-cache-file', async (_ev
     bookKey: typeof payload?.bookKey === 'string' ? payload.bookKey : '',
     voice: typeof payload?.voice === 'string' ? payload.voice : '',
     rate: typeof payload?.rate === 'string' ? payload.rate : '',
+    volume: typeof payload?.volume === 'string' ? payload.volume : '',
     chunkIndex: Number(payload?.chunkIndex || 0),
     chunkText: typeof payload?.chunkText === 'string' ? payload.chunkText : '',
     lookup: async ({ audioPath, ttlMs }) => {
@@ -198,6 +199,7 @@ ipcMain.handle('audio-cache:prepare-edge-tts-audio-cache-file', async (_event, p
     bookKey: typeof payload?.bookKey === 'string' ? payload.bookKey : '',
     voice: typeof payload?.voice === 'string' ? payload.voice : '',
     rate: typeof payload?.rate === 'string' ? payload.rate : '',
+    volume: typeof payload?.volume === 'string' ? payload.volume : '',
     chunkIndex: Number(payload?.chunkIndex || 0),
     chunkText: typeof payload?.chunkText === 'string' ? payload.chunkText : '',
     lookup: async ({ audioPath, ttlMs }) => {
