@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { PdfBookState } from '../hooks/usePdfBookLoader';
 import type { ReadingProgressRecord } from '../types/electron';
 import { resolvePublicAssetPath } from '../utils/publicAsset';
+import { CustomSelect, type CustomSelectOption } from './CustomSelect';
 
 type BookListPageProps = {
   books: PdfBookState[];
@@ -204,6 +205,27 @@ export function BookListPage({ books, loading = false, onSelectBook, progressByB
   const [selectedKeyword, setSelectedKeyword] = useState('');
   const normalizedQuery = normalizeSearchText(query);
   const searchOptions = useMemo(() => getSearchOptions(books), [books]);
+  const subjectOptions = useMemo<CustomSelectOption[]>(
+    () => [
+      { value: '', label: 'Tất cả chủ đề' },
+      ...searchOptions.subjects.map((subject) => ({ value: subject, label: subject })),
+    ],
+    [searchOptions.subjects],
+  );
+  const ageRangeOptions = useMemo<CustomSelectOption[]>(
+    () => [
+      { value: '', label: 'Tất cả độ tuổi' },
+      ...searchOptions.ageRanges.map((ageRange) => ({ value: ageRange, label: ageRange })),
+    ],
+    [searchOptions.ageRanges],
+  );
+  const keywordOptions = useMemo<CustomSelectOption[]>(
+    () => [
+      { value: '', label: 'Tất cả từ khóa' },
+      ...searchOptions.keywords.map((keyword) => ({ value: keyword, label: keyword })),
+    ],
+    [searchOptions.keywords],
+  );
   const suggestions = useMemo(() => getSuggestions(books, query), [books, query]);
   const filters = useMemo<SearchFilters>(
     () => ({
@@ -307,45 +329,27 @@ export function BookListPage({ books, loading = false, onSelectBook, progressByB
 
             {isFilterPanelOpen ? (
               <div id="book-list-filters" className="book-list-page__filters">
-                <label className="book-list-page__filter-field">
-                  Chủ đề
-                  <select
-                    className="book-list-page__filter-select"
-                    value={selectedSubject}
-                    onChange={(event) => setSelectedSubject(event.target.value)}
-                  >
-                    <option value="">Tất cả chủ đề</option>
-                    {searchOptions.subjects.map((subject) => (
-                      <option key={normalizeSearchText(subject)} value={subject}>{subject}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="book-list-page__filter-field">
-                  Độ tuổi
-                  <select
-                    className="book-list-page__filter-select"
-                    value={selectedAgeRange}
-                    onChange={(event) => setSelectedAgeRange(event.target.value)}
-                  >
-                    <option value="">Tất cả độ tuổi</option>
-                    {searchOptions.ageRanges.map((ageRange) => (
-                      <option key={normalizeSearchText(ageRange)} value={ageRange}>{ageRange}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="book-list-page__filter-field">
-                  Từ khóa
-                  <select
-                    className="book-list-page__filter-select"
-                    value={selectedKeyword}
-                    onChange={(event) => setSelectedKeyword(event.target.value)}
-                  >
-                    <option value="">Tất cả từ khóa</option>
-                    {searchOptions.keywords.map((keyword) => (
-                      <option key={normalizeSearchText(keyword)} value={keyword}>{keyword}</option>
-                    ))}
-                  </select>
-                </label>
+                <CustomSelect
+                  className="book-list-page__filter-field"
+                  label="Chủ đề"
+                  value={selectedSubject}
+                  options={subjectOptions}
+                  onChange={setSelectedSubject}
+                />
+                <CustomSelect
+                  className="book-list-page__filter-field"
+                  label="Độ tuổi"
+                  value={selectedAgeRange}
+                  options={ageRangeOptions}
+                  onChange={setSelectedAgeRange}
+                />
+                <CustomSelect
+                  className="book-list-page__filter-field"
+                  label="Từ khóa"
+                  value={selectedKeyword}
+                  options={keywordOptions}
+                  onChange={setSelectedKeyword}
+                />
               </div>
             ) : null}
           </div>

@@ -63,6 +63,16 @@ const mockBooks: PdfBookState[] = [
   },
 ];
 
+async function selectFilterOption(
+  user: ReturnType<typeof userEvent.setup>,
+  label: 'Chủ đề' | 'Độ tuổi' | 'Từ khóa',
+  option: string,
+) {
+  await user.click(screen.getByRole('button', { name: new RegExp(`^${label}(?:\\s|$)`) }));
+  const listbox = screen.getByRole('listbox', { name: label });
+  await user.click(within(listbox).getByRole('option', { name: option }));
+}
+
 describe('BookListPage', () => {
   it('shows percent and the one-based resume page for valid incomplete progress', () => {
     const progress: ReadingProgressRecord = {
@@ -282,9 +292,9 @@ describe('BookListPage', () => {
     render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Mở bộ lọc' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Chủ đề' }), 'Kỹ năng sống');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Độ tuổi' }), '6+');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Từ khóa' }), 'chia sẻ');
+    await selectFilterOption(user, 'Chủ đề', 'Kỹ năng sống');
+    await selectFilterOption(user, 'Độ tuổi', '6+');
+    await selectFilterOption(user, 'Từ khóa', 'chia sẻ');
 
     const primaryResults = screen.getByRole('region', { name: 'Kết quả phù hợp' });
     const relatedResults = screen.getByRole('region', { name: 'Kết quả liên quan' });
@@ -301,9 +311,9 @@ describe('BookListPage', () => {
     render(<BookListPage books={mockBooks} onSelectBook={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Mở bộ lọc' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Chủ đề' }), 'Kỹ năng sống');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Độ tuổi' }), '6+');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Từ khóa' }), 'giấc ngủ');
+    await selectFilterOption(user, 'Chủ đề', 'Kỹ năng sống');
+    await selectFilterOption(user, 'Độ tuổi', '6+');
+    await selectFilterOption(user, 'Từ khóa', 'giấc ngủ');
 
     expect(screen.getByText(/không tìm thấy/i)).toBeInTheDocument();
     const relatedResults = screen.getByRole('region', { name: 'Kết quả liên quan' });
@@ -332,8 +342,8 @@ describe('BookListPage', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Tìm sách' }), 'không có');
     await user.click(screen.getByRole('button', { name: 'Mở bộ lọc' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Chủ đề' }), 'Chung');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Độ tuổi' }), '6+');
+    await selectFilterOption(user, 'Chủ đề', 'Chung');
+    await selectFilterOption(user, 'Độ tuổi', '6+');
     const relatedRegion = screen.getByRole('region', { name: 'Kết quả liên quan' });
 
     expect(
@@ -384,13 +394,12 @@ describe('BookListPage', () => {
 
     await user.type(searchbox, 'chia sẻ');
     await user.click(screen.getByRole('button', { name: 'Mở bộ lọc' }));
-    const subjectSelect = screen.getByRole('combobox', { name: 'Chủ đề' });
-    await user.selectOptions(subjectSelect, 'Kỹ năng sống');
+    await selectFilterOption(user, 'Chủ đề', 'Kỹ năng sống');
     await user.click(screen.getByRole('button', { name: 'Xóa tìm kiếm và bộ lọc' }));
     const primaryResults = screen.getByRole('region', { name: 'Kết quả phù hợp' });
 
     expect(searchbox).toHaveValue('');
-    expect(subjectSelect).toHaveValue('');
+    expect(screen.getByRole('button', { name: /^Chủ đề(?:\s|$)/ })).toHaveAccessibleName('Chủ đề Tất cả chủ đề');
     expect(within(primaryResults).getByText('Sách thứ nhất')).toBeInTheDocument();
     expect(within(primaryResults).getByText('Ngủ ngon nhé')).toBeInTheDocument();
     expect(within(primaryResults).getByText('Sóc không hề tham lam')).toBeInTheDocument();
