@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CustomSelect, type CustomSelectOption } from './CustomSelect';
@@ -71,6 +71,33 @@ describe('CustomSelect', () => {
     expect(listbox).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Three' }).id);
     await user.keyboard('{Home}');
     expect(listbox).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'One' }).id);
+    await user.keyboard('{ArrowUp}');
+    expect(listbox).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Three' }).id);
+  });
+
+  it('opens with the selected option on ArrowDown and through button Space semantics', async () => {
+    const user = userEvent.setup();
+    renderSelect();
+    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    trigger.focus();
+
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Two' }).id);
+    await user.keyboard('{Escape}');
+    await user.keyboard(' ');
+    expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Two' }).id);
+  });
+
+  it('selects the active listbox option with Enter', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderSelect();
+    const trigger = screen.getByRole('button', { name: 'Narrator' });
+    trigger.focus();
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+
+    expect(onChange).toHaveBeenCalledWith('three');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it('selects with Space and closes with Escape or Tab using the required focus behavior', async () => {
@@ -145,6 +172,67 @@ describe('CustomSelect', () => {
       <CustomSelect label="Narrator" value="missing" options={[{ value: 'five', label: 'Five' }]} onChange={vi.fn()} />,
     );
     expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'Five' }).id);
+  });
+
+  it('closes safely when it becomes disabled while open', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <CustomSelect label="Narrator" value="two" options={options} onChange={onChange} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    const listbox = screen.getByRole('listbox');
+    const option = screen.getByRole('option', { name: 'Two' });
+    rerender(<CustomSelect label="Narrator" value="two" options={options} onChange={onChange} disabled />);
+
+    fireEvent.keyDown(listbox, { key: 'Enter' });
+    fireEvent.click(option);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('closes for empty options and keeps active descendant valid when options shrink', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <CustomSelect label="Narrator" value="two" options={options} onChange={onChange} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    await user.keyboard('{End}');
+    rerender(
+      <CustomSelect label="Narrator" value="missing" options={[options[0]]} onChange={onChange} />,
+    );
+    const listbox = screen.getByRole('listbox');
+    expect(document.getElementById(listbox.getAttribute('aria-activedescendant')!)).toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(onChange).toHaveBeenCalledWith('one');
+
+    await user.click(screen.getByRole('button', { name: 'Narrator' }));
+    rerender(<CustomSelect label="Narrator" value="missing" options={[]} onChange={onChange} />);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('removes the document pointerdown listener after close and unmount', async () => {
+    const user = userEvent.setup();
+    const addSpy = vi.spyOn(document, 'addEventListener');
+    const removeSpy = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = render(
+      <CustomSelect label="Narrator" value="two" options={options} onChange={vi.fn()} />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Narrator' });
+
+    await user.click(trigger);
+    const firstHandler = addSpy.mock.calls.find(([type]) => type === 'pointerdown')?.[1];
+    await user.keyboard('{Escape}');
+    expect(removeSpy).toHaveBeenCalledWith('pointerdown', firstHandler);
+
+    await user.click(trigger);
+    const pointerAdds = addSpy.mock.calls.filter(([type]) => type === 'pointerdown');
+    const secondHandler = pointerAdds[pointerAdds.length - 1][1];
+    unmount();
+    expect(removeSpy).toHaveBeenCalledWith('pointerdown', secondHandler);
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 
 });

@@ -31,11 +31,23 @@ export function CustomSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
+  const disabledRef = useRef(false);
+  const optionsRef = useRef(options);
+  const previousInputsRef = useRef({ options, value });
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const isDisabled = disabled || options.length === 0;
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const inputsChanged = previousInputsRef.current.options !== options
+    || previousInputsRef.current.value !== value;
+  const effectiveActiveIndex = inputsChanged
+    ? (selectedIndex >= 0 ? selectedIndex : 0)
+    : Math.min(activeIndex, Math.max(options.length - 1, 0));
+  const isOpen = open && !isDisabled;
+  disabledRef.current = isDisabled;
+  optionsRef.current = options;
+  previousInputsRef.current = { options, value };
 
   const optionId = (index: number) => `${id}-option-${index}`;
 
@@ -51,22 +63,26 @@ export function CustomSelect({
   };
 
   const selectActiveOption = () => {
-    const option = options[activeIndex];
+    if (disabledRef.current) return;
+    const option = optionsRef.current[effectiveActiveIndex];
     if (!option) return;
     onChange(option.value);
     closeAndRestoreFocus();
   };
 
   useEffect(() => {
-    if (open) listboxRef.current?.focus();
-  }, [open]);
+    if (isOpen) listboxRef.current?.focus();
+  }, [isOpen]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isDisabled) return;
     const nextSelectedIndex = options.findIndex((option) => option.value === value);
     setActiveIndex(nextSelectedIndex >= 0 ? nextSelectedIndex : 0);
-    if (options.length === 0) setOpen(false);
   }, [options, value]);
+
+  useEffect(() => {
+    if (open && isDisabled) setOpen(false);
+  }, [isDisabled, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,6 +105,7 @@ export function CustomSelect({
   };
 
   const handleListboxKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (disabledRef.current) return;
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
@@ -130,29 +147,29 @@ export function CustomSelect({
         className="custom-select__trigger"
         aria-labelledby={labelId}
         aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listboxId : undefined}
         disabled={isDisabled}
-        onClick={() => (open ? setOpen(false) : openList())}
+        onClick={() => (isOpen ? setOpen(false) : openList())}
         onKeyDown={handleTriggerKeyDown}
       >
         <span className="custom-select__value">{selectedOption?.label ?? placeholder}</span>
         <ChevronDown className="custom-select__chevron" aria-hidden="true" />
       </button>
-      {open ? (
+      {isOpen ? (
         <div
           ref={listboxRef}
           id={listboxId}
           className="custom-select__listbox"
           role="listbox"
           aria-labelledby={labelId}
-          aria-activedescendant={optionId(activeIndex)}
+          aria-activedescendant={optionId(effectiveActiveIndex)}
           tabIndex={-1}
           onKeyDown={handleListboxKeyDown}
         >
           {options.map((option, index) => {
             const selected = option.value === value;
-            const active = index === activeIndex;
+            const active = index === effectiveActiveIndex;
             return (
               <div
                 id={optionId(index)}
@@ -162,6 +179,7 @@ export function CustomSelect({
                 aria-selected={selected}
                 onPointerMove={() => setActiveIndex(index)}
                 onClick={() => {
+                  if (disabledRef.current) return;
                   onChange(option.value);
                   closeAndRestoreFocus();
                 }}
