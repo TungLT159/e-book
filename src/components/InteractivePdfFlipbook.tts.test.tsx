@@ -149,6 +149,11 @@ function countPreparedNarration(chunkText: string) {
   return prepareEdgeTtsAudioCacheFile.mock.calls.filter(([payload]) => payload.chunkText === chunkText).length;
 }
 
+function selectSleepTimer(optionName: string | RegExp) {
+  fireEvent.click(screen.getByRole('button', { name: /hẹn giờ dừng đọc/i }));
+  fireEvent.click(screen.getByRole('option', { name: optionName }));
+}
+
 vi.mock('react-pageflip', () => ({
   default: React.forwardRef(
     ({ children, onFlip }: { children: React.ReactNode; onFlip?: (event: { data: number }) => void }, ref) => {
@@ -792,6 +797,46 @@ describe('InteractivePdfFlipbook narration', () => {
     await waitFor(() => expectPreparedNarration('Trang mộtnội dung mở đầu'));
     fireEvent.click(screen.getByRole('button', { name: /^dừng đọc$/i }));
     await waitFor(() => expect(sleepTimerTrigger).toBeDisabled());
+  });
+
+  it('counts down from an absolute sleep timer deadline and resets when a new preset is selected', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await waitFor(() => expectPreparedNarration('Trang mộtnội dung mở đầu'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    selectSleepTimer(/^30 phút$/i);
+    expect(screen.getByLabelText('Thời gian đọc còn lại')).toHaveTextContent('30:00');
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByLabelText('Thời gian đọc còn lại')).toHaveTextContent('29:59');
+
+    selectSleepTimer(/^5 phút$/i);
+    expect(screen.getByLabelText('Thời gian đọc còn lại')).toHaveTextContent('05:00');
+  });
+
+  it('removes the countdown without stopping active narration when the sleep timer is turned off', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await waitFor(() => expectPreparedNarration('Trang mộtnội dung mở đầu'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    selectSleepTimer(/^30 phút$/i);
+    expect(screen.getByLabelText('Thời gian đọc còn lại')).toBeInTheDocument();
+
+    selectSleepTimer(/^tắt hẹn giờ$/i);
+    expect(screen.queryByLabelText('Thời gian đọc còn lại')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
   });
 
   it('passes narration volume from persisted settings without a neutral speech rate', async () => {

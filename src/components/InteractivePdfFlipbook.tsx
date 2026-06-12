@@ -18,6 +18,12 @@ type InteractivePdfFlipbookProps = {
   onProgressChange?: (payload: ReadingProgressRecord) => void;
 } & Record<string, unknown>;
 
+function formatSleepTimer(remainingSeconds: number) {
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function InteractivePdfFlipbook({
   title,
   pdfPath,
@@ -68,8 +74,8 @@ export function InteractivePdfFlipbook({
         setSpeechRate={state.setSpeechRate}
         speechVolume={state.speechVolume}
         setSpeechVolume={state.setSpeechVolume}
-        sleepTimerMinutes={null}
-        setSleepTimerMinutes={() => undefined}
+        sleepTimerMinutes={state.sleepTimerMinutes}
+        setSleepTimerMinutes={state.setSleepTimerMinutes}
         isNarrationEnabled={state.isNarrationEnabled}
         isNarrationLoading={state.isNarrationLoading}
         isNarrationSynthesizing={state.isNarrationSynthesizing}
@@ -90,6 +96,15 @@ export function InteractivePdfFlipbook({
 
         {state.isNarrationEnabled && (
           <div className="interactive-reader__auto-read-bar">
+            {state.sleepTimerRemainingSeconds !== null && (
+              <span
+                className="interactive-reader__sleep-timer"
+                aria-label="Thời gian đọc còn lại"
+                aria-live="off"
+              >
+                {formatSleepTimer(state.sleepTimerRemainingSeconds)}
+              </span>
+            )}
             {state.isAutoReadPreparing ? (
               <div
                 className="interactive-reader__auto-read-loading"

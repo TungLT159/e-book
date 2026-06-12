@@ -149,6 +149,8 @@ type UseInteractivePdfFlipbookResult = {
   selectedVoice: string;
   speechRate: number;
   speechVolume: number;
+  sleepTimerMinutes: number | null;
+  sleepTimerRemainingSeconds: number | null;
   narrationError: string | null;
   setNumPages: Dispatch<SetStateAction<number>>;
   setPdfError: Dispatch<SetStateAction<string | null>>;
@@ -172,6 +174,7 @@ type UseInteractivePdfFlipbookResult = {
   setSelectedVoice: Dispatch<SetStateAction<string>>;
   setSpeechRate: Dispatch<SetStateAction<number>>;
   setSpeechVolume: Dispatch<SetStateAction<number>>;
+  setSleepTimerMinutes: (minutes: number | null) => void;
   closeMenu: () => void;
   toggleMenu: () => void;
   toggleTtsSettings: () => void;
@@ -263,6 +266,8 @@ export function useInteractivePdfFlipbook({
   const [selectedVoice, setSelectedVoice] = useState(initialNarrationSettings.selectedVoice);
   const [speechRate, setSpeechRateState] = useState(initialNarrationSettings.speechRate);
   const [speechVolume, setSpeechVolumeState] = useState(initialNarrationSettings.speechVolume);
+  const [sleepTimerMinutes, setSleepTimerMinutesState] = useState<number | null>(null);
+  const [sleepTimerRemainingSeconds, setSleepTimerRemainingSeconds] = useState<number | null>(null);
   const [narrationError, setNarrationError] = useState<string | null>(null);
   const readerRef = useRef<HTMLElement | null>(null);
   const menuToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -283,6 +288,9 @@ export function useInteractivePdfFlipbook({
   const narrationPlaybackOperationIdRef = useRef(0);
   const narrationPreloadRequestIdRef = useRef(0);
   const narrationPagePauseTimeoutRef = useRef<number | null>(null);
+  const sleepTimerDeadlineRef = useRef<number | null>(null);
+  const sleepTimerDisplayIntervalRef = useRef<number | null>(null);
+  const sleepTimerExpiryTimeoutRef = useRef<number | null>(null);
   const pendingNarrationPageIndexRef = useRef<number | null>(null);
   const isNarrationPausedRef = useRef(false);
   const narrationStartupTimingOperationIdRef = useRef(0);
@@ -362,6 +370,45 @@ export function useInteractivePdfFlipbook({
       ),
     );
   }, []);
+
+  const clearSleepTimer = useCallback(() => {
+    if (sleepTimerDisplayIntervalRef.current !== null) {
+      window.clearInterval(sleepTimerDisplayIntervalRef.current);
+      sleepTimerDisplayIntervalRef.current = null;
+    }
+    if (sleepTimerExpiryTimeoutRef.current !== null) {
+      window.clearTimeout(sleepTimerExpiryTimeoutRef.current);
+      sleepTimerExpiryTimeoutRef.current = null;
+    }
+    sleepTimerDeadlineRef.current = null;
+    setSleepTimerMinutesState(null);
+    setSleepTimerRemainingSeconds(null);
+  }, []);
+
+  const setSleepTimerMinutes = useCallback((minutes: number | null) => {
+    clearSleepTimer();
+    if (minutes === null) return;
+    if (![5, 10, 15, 30, 45, 60].includes(minutes)) return;
+
+    const durationMs = minutes * 60 * 1000;
+    const deadline = Date.now() + durationMs;
+    sleepTimerDeadlineRef.current = deadline;
+    setSleepTimerMinutesState(minutes);
+    setSleepTimerRemainingSeconds(minutes * 60);
+
+    sleepTimerDisplayIntervalRef.current = window.setInterval(() => {
+      if (sleepTimerDeadlineRef.current !== deadline) return;
+      setSleepTimerRemainingSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    }, 1000);
+
+    sleepTimerExpiryTimeoutRef.current = window.setTimeout(() => {
+      if (sleepTimerDeadlineRef.current !== deadline) return;
+      clearSleepTimer();
+      setIsNarrationEnabled(false);
+    }, durationMs);
+  }, [clearSleepTimer]);
+
+  useEffect(() => clearSleepTimer, [clearSleepTimer]);
 
   useEffect(() => {
     writeStoredNarrationSettings({ selectedVoice, speechRate, speechVolume });
@@ -1395,6 +1442,8 @@ export function useInteractivePdfFlipbook({
     selectedVoice,
     speechRate,
     speechVolume,
+    sleepTimerMinutes,
+    sleepTimerRemainingSeconds,
     narrationError,
     setNumPages,
     setPdfError,
@@ -1418,6 +1467,7 @@ export function useInteractivePdfFlipbook({
     setSelectedVoice,
     setSpeechRate,
     setSpeechVolume,
+    setSleepTimerMinutes,
     closeMenu,
     toggleMenu,
     toggleTtsSettings,
