@@ -291,6 +291,7 @@ export function useInteractivePdfFlipbook({
   const sleepTimerDeadlineRef = useRef<number | null>(null);
   const sleepTimerDisplayIntervalRef = useRef<number | null>(null);
   const sleepTimerExpiryTimeoutRef = useRef<number | null>(null);
+  const stopNarrationRef = useRef<() => void>(() => undefined);
   const pendingNarrationPageIndexRef = useRef<number | null>(null);
   const isNarrationPausedRef = useRef(false);
   const narrationStartupTimingOperationIdRef = useRef(0);
@@ -371,7 +372,7 @@ export function useInteractivePdfFlipbook({
     );
   }, []);
 
-  const clearSleepTimer = useCallback(() => {
+  const clearSleepTimerHandles = useCallback(() => {
     if (sleepTimerDisplayIntervalRef.current !== null) {
       window.clearInterval(sleepTimerDisplayIntervalRef.current);
       sleepTimerDisplayIntervalRef.current = null;
@@ -381,9 +382,13 @@ export function useInteractivePdfFlipbook({
       sleepTimerExpiryTimeoutRef.current = null;
     }
     sleepTimerDeadlineRef.current = null;
+  }, []);
+
+  const clearSleepTimer = useCallback(() => {
+    clearSleepTimerHandles();
     setSleepTimerMinutesState(null);
     setSleepTimerRemainingSeconds(null);
-  }, []);
+  }, [clearSleepTimerHandles]);
 
   const setSleepTimerMinutes = useCallback((minutes: number | null) => {
     if (minutes !== null && ![5, 10, 15, 30, 45, 60].includes(minutes)) return;
@@ -403,12 +408,11 @@ export function useInteractivePdfFlipbook({
 
     sleepTimerExpiryTimeoutRef.current = window.setTimeout(() => {
       if (sleepTimerDeadlineRef.current !== deadline) return;
-      clearSleepTimer();
-      setIsNarrationEnabled(false);
+      stopNarrationRef.current();
     }, durationMs);
   }, [clearSleepTimer]);
 
-  useEffect(() => clearSleepTimer, [clearSleepTimer]);
+  useEffect(() => clearSleepTimerHandles, [clearSleepTimerHandles]);
 
   useEffect(() => {
     writeStoredNarrationSettings({ selectedVoice, speechRate, speechVolume });
@@ -503,6 +507,7 @@ export function useInteractivePdfFlipbook({
   }, []);
 
   const stopNarration = useCallback(() => {
+    clearSleepTimer();
     narrationRequestIdRef.current += 1;
     narrationPlaybackOperationIdRef.current += 1;
     narrationPreloadRequestIdRef.current += 1;
@@ -525,9 +530,14 @@ export function useInteractivePdfFlipbook({
       narrationBlobUrlRef.current = null;
     }
 
+    isNarrationPausedRef.current = false;
+    setIsNarrationEnabled(false);
     setIsNarrationPaused(false);
+    setIsNarrationLoading(false);
     setIsNarrationSynthesizing(false);
-  }, []);
+  }, [clearSleepTimer]);
+
+  stopNarrationRef.current = stopNarration;
 
   const destroyPdfDocumentCache = useCallback(
     (cachedDocument: { path: string; promise: Promise<PdfDocumentProxy> } | null) => {
@@ -643,13 +653,7 @@ export function useInteractivePdfFlipbook({
     setNarrationError(null);
 
     if (isNarrationEnabled) {
-      narrationRequestIdRef.current += 1;
-      narrationPlaybackOperationIdRef.current += 1;
-      narrationPreloadRequestIdRef.current += 1;
-      pendingNarrationPageIndexRef.current = null;
-      setIsNarrationEnabled(false);
-      isNarrationPausedRef.current = false;
-      setIsNarrationPaused(false);
+      stopNarration();
       return;
     }
 
@@ -660,7 +664,7 @@ export function useInteractivePdfFlipbook({
     setIsNarrationSynthesizing(true);
     setNarrationPageIndex(currentPageIndex);
     setIsNarrationEnabled(true);
-  }, [currentPageIndex, isNarrationEnabled]);
+  }, [currentPageIndex, isNarrationEnabled, stopNarration]);
 
   const continuePendingNarrationTransition = useCallback(
     (targetPageIndex: number, requestId: number) => {
@@ -719,9 +723,7 @@ export function useInteractivePdfFlipbook({
         .catch(() => {
           if (playbackOperationId !== narrationPlaybackOperationIdRef.current) return;
           setNarrationError('Không thể phát Edge TTS.');
-          isNarrationPausedRef.current = false;
-          setIsNarrationPaused(false);
-          setIsNarrationEnabled(false);
+          stopNarration();
         });
       return;
     }
@@ -734,7 +736,7 @@ export function useInteractivePdfFlipbook({
     audio.pause();
     isNarrationPausedRef.current = true;
     setIsNarrationPaused(true);
-  }, [continuePendingNarrationTransition, isAutoReadPreparing, isNarrationPaused]);
+  }, [continuePendingNarrationTransition, isAutoReadPreparing, isNarrationPaused, stopNarration]);
 
   const setVisiblePage = useCallback((pageIndex: number) => {
     const nextPage = pageIndex + 1;
@@ -1017,8 +1019,6 @@ export function useInteractivePdfFlipbook({
     destroyPdfDocumentCache(pdfDocumentCacheRef.current);
     pageNarrationTextPromisesRef.current.clear();
     setNarrationError(null);
-    setIsNarrationLoading(false);
-    setIsNarrationEnabled(false);
     stopNarration();
 
     return () => {
@@ -1197,10 +1197,7 @@ export function useInteractivePdfFlipbook({
       }
 
       if (narrationPageIndex >= numPages - 1) {
-        pendingNarrationPageIndexRef.current = null;
-        isNarrationPausedRef.current = false;
-        setIsNarrationPaused(false);
-        setIsNarrationEnabled(false);
+        stopNarration();
         return;
       }
 
@@ -1218,10 +1215,7 @@ export function useInteractivePdfFlipbook({
       }
 
       setNarrationError('Không thể phát Edge TTS.');
-      pendingNarrationPageIndexRef.current = null;
-      isNarrationPausedRef.current = false;
-      setIsNarrationPaused(false);
-      setIsNarrationEnabled(false);
+      stopNarration();
     };
 
     cleanupAudio();
@@ -1333,10 +1327,7 @@ export function useInteractivePdfFlipbook({
         setNarrationError(
           error instanceof Error ? error.message : 'Không thể đọc văn bản bằng Edge TTS.',
         );
-        pendingNarrationPageIndexRef.current = null;
-        isNarrationPausedRef.current = false;
-        setIsNarrationPaused(false);
-        setIsNarrationEnabled(false);
+        stopNarration();
       } finally {
         if (!cancelled && requestId === narrationRequestIdRef.current) {
           setIsNarrationSynthesizing(false);
@@ -1368,6 +1359,7 @@ export function useInteractivePdfFlipbook({
     speechRate,
     speechVolume,
     formatNarrationPercentage,
+    stopNarration,
   ]);
 
   useEffect(() => {
