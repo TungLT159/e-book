@@ -1766,6 +1766,7 @@ describe('InteractivePdfFlipbook', () => {
     ]);
     const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ voice }: { voice: string }) => ({
       audioPath: `C:\\Temp\\flipbook-cache\\${voice}.mp3`,
+      audioUrl: `file:///C:/Temp/flipbook-cache/${voice}.mp3`,
       cacheHit: false,
     }));
     const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
@@ -1773,7 +1774,7 @@ describe('InteractivePdfFlipbook', () => {
       pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
     );
 
-    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile, prepareEdgeTtsAudioCacheFile: getOrCreateEdgeTtsAudioCacheFile };
     window.edgeTts = { synthesize, getVoices };
     window.debugTools = { writeExtractedText, readExtractedTextPage };
 
@@ -1792,7 +1793,7 @@ describe('InteractivePdfFlipbook', () => {
           voice: 'vi-VN-NamMinhNeural',
           rate: '',
           chunkIndex: 0,
-          chunkText: 'Nội dung đọc từ file text trang một',
+          chunkText: 'Trang 1nội dung',
         }),
       ),
     );
@@ -1807,7 +1808,7 @@ describe('InteractivePdfFlipbook', () => {
           voice: 'vi-VN-HoaiMyNeural',
           rate: '',
           chunkIndex: 0,
-          chunkText: 'Nội dung đọc từ file text trang một',
+          chunkText: 'Trang 1nội dung',
         }),
       ),
     );
@@ -1825,6 +1826,7 @@ describe('InteractivePdfFlipbook', () => {
     ]);
     const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ rate }: { rate: string }) => ({
       audioPath: `C:\\Temp\\flipbook-cache\\${rate || 'default'}.mp3`,
+      audioUrl: `file:///C:/Temp/flipbook-cache/${rate || 'default'}.mp3`,
       cacheHit: false,
     }));
     const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
@@ -1832,7 +1834,7 @@ describe('InteractivePdfFlipbook', () => {
       pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
     );
 
-    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile, prepareEdgeTtsAudioCacheFile: getOrCreateEdgeTtsAudioCacheFile };
     window.edgeTts = { synthesize, getVoices };
     window.debugTools = { writeExtractedText, readExtractedTextPage };
 
@@ -1851,7 +1853,7 @@ describe('InteractivePdfFlipbook', () => {
           voice: 'vi-VN-NamMinhNeural',
           rate: '',
           chunkIndex: 0,
-          chunkText: 'Nội dung đọc từ file text trang một',
+          chunkText: 'Trang 1nội dung',
         }),
       ),
     );
@@ -1865,7 +1867,7 @@ describe('InteractivePdfFlipbook', () => {
           voice: 'vi-VN-NamMinhNeural',
           rate: '+25%',
           chunkIndex: 0,
-          chunkText: 'Nội dung đọc từ file text trang một',
+          chunkText: 'Trang 1nội dung',
         }),
       ),
     );
@@ -1883,6 +1885,7 @@ describe('InteractivePdfFlipbook', () => {
     ]);
     const getOrCreateEdgeTtsAudioCacheFile = vi.fn(async ({ volume }: { volume: string }) => ({
       audioPath: `C:\\Temp\\flipbook-cache\\${volume || 'default'}.mp3`,
+      audioUrl: `file:///C:/Temp/flipbook-cache/${volume || 'default'}.mp3`,
       cacheHit: false,
     }));
     const writeExtractedText = vi.fn(async () => 'C:\\Temp\\flipbook-react-electron\\extracted-text\\demo.txt');
@@ -1890,7 +1893,7 @@ describe('InteractivePdfFlipbook', () => {
       pageNumber === 1 ? 'Nội dung đọc từ file text trang một' : 'Nội dung đọc từ file text trang hai',
     );
 
-    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile };
+    window.audioCache = { getOrCreateEdgeTtsAudioCacheFile, prepareEdgeTtsAudioCacheFile: getOrCreateEdgeTtsAudioCacheFile };
     window.edgeTts = { synthesize, getVoices };
     window.debugTools = { writeExtractedText, readExtractedTextPage };
 
@@ -1911,7 +1914,7 @@ describe('InteractivePdfFlipbook', () => {
           rate: '',
           volume: '+20%',
           chunkIndex: 0,
-          chunkText: 'Nội dung đọc từ file text trang một',
+          chunkText: 'Trang 1nội dung',
         }),
       ),
     );

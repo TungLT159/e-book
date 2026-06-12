@@ -3,11 +3,11 @@ import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { getDocument } from 'pdfjs-dist';
 import { resolvePublicAssetPath } from '../../utils/publicAsset';
 import {
-  normalizeNarrationAudioData,
   sanitizeNarrationText,
   textContentItemsToNarrationText,
   type PdfTextContentItem,
 } from '../../utils/narration';
+import { createNarrationPreparationCoordinator } from '../../utils/narrationPreparation';
 import type { ReadingProgressRecord } from '../../types/electron';
 
 const PDF_PAGE_WIDTH = 660;
@@ -32,6 +32,36 @@ const ZOOM_STEP = 0.1;
 const FULLSCREEN_ZOOM_MULTIPLIER = 1.18;
 const AUTO_FLIP_INTERVAL = 3200;
 const NARRATION_PAGE_PAUSE_MS = 1500;
+
+function markNarrationPerformance(name: string) {
+  if (!import.meta.env.DEV) return;
+
+  try {
+    globalThis.performance?.mark?.(name);
+  } catch {
+    // Development instrumentation is best-effort and must not affect narration.
+  }
+}
+
+function measureNarrationPerformance(name: string, startMark: string, endMark: string) {
+  if (!import.meta.env.DEV) return;
+
+  try {
+    globalThis.performance?.measure?.(name, startMark, endMark);
+  } catch {
+    // Development instrumentation is best-effort and must not affect narration.
+  }
+}
+
+function measureNarrationDuration(name: string, duration: number | undefined) {
+  if (!import.meta.env.DEV || typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) return;
+
+  try {
+    globalThis.performance?.measure?.(name, { start: 0, duration });
+  } catch {
+    // Development instrumentation is best-effort and must not affect narration.
+  }
+}
 
 type PageFlipApi = {
   flipNext: () => void;
@@ -60,6 +90,27 @@ type NarrationSettings = {
   selectedVoice: string;
   speechRate: number;
   speechVolume: number;
+};
+
+type PdfDocumentProxy = Awaited<ReturnType<typeof getDocument>['promise']>;
+
+type NarrationPreparationRequest = {
+  bookKey: string;
+  voice: string;
+  rate: string;
+  volume: string;
+  chunkIndex: number;
+  chunkText: string;
+};
+
+type NarrationPreparationResult = {
+  audioPath: string;
+  audioUrl: string;
+  cacheHit: boolean;
+  timings?: {
+    cacheLookupMs: number;
+    synthesisMs: number;
+  };
 };
 
 type ViewportSize = {
@@ -98,7 +149,6 @@ type UseInteractivePdfFlipbookResult = {
   selectedVoice: string;
   speechRate: number;
   speechVolume: number;
-  pageNarrationTexts: string[];
   narrationError: string | null;
   setNumPages: Dispatch<SetStateAction<number>>;
   setPdfError: Dispatch<SetStateAction<string | null>>;
@@ -213,7 +263,6 @@ export function useInteractivePdfFlipbook({
   const [selectedVoice, setSelectedVoice] = useState(initialNarrationSettings.selectedVoice);
   const [speechRate, setSpeechRateState] = useState(initialNarrationSettings.speechRate);
   const [speechVolume, setSpeechVolumeState] = useState(initialNarrationSettings.speechVolume);
-  const [pageNarrationTexts, setPageNarrationTexts] = useState<string[]>([]);
   const [narrationError, setNarrationError] = useState<string | null>(null);
   const readerRef = useRef<HTMLElement | null>(null);
   const menuToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -236,8 +285,31 @@ export function useInteractivePdfFlipbook({
   const narrationPagePauseTimeoutRef = useRef<number | null>(null);
   const pendingNarrationPageIndexRef = useRef<number | null>(null);
   const isNarrationPausedRef = useRef(false);
-  const narrationOperationIdRef = useRef(0);
-  const extractedTextDebugFilePromiseRef = useRef<Promise<string> | null>(null);
+  const narrationStartupTimingOperationIdRef = useRef(0);
+  const pendingNarrationStartupTimingIdRef = useRef<number | null>(null);
+  const pdfDocumentCacheRef = useRef<{ path: string; promise: Promise<PdfDocumentProxy> } | null>(null);
+  const pageNarrationTextPromisesRef = useRef(new Map<number, Promise<string>>());
+  const createNarrationPreparationGeneration = () => {
+    const requests = new Map<string, NarrationPreparationRequest>();
+    const results = new Map<string, {
+      promise: Promise<NarrationPreparationResult>;
+      pendingBackgroundPromotion: boolean;
+    }>();
+    const coordinator = createNarrationPreparationCoordinator<NarrationPreparationResult>({
+      backgroundConcurrency: 2,
+      prepare: (key) => {
+        const request = requests.get(key);
+        if (!request) {
+          throw new Error('Narration preparation request is unavailable.');
+        }
+
+        return window.audioCache!.prepareEdgeTtsAudioCacheFile(request);
+      },
+    });
+
+    return { requests, results, coordinator };
+  };
+  const narrationPreparationGenerationRef = useRef(createNarrationPreparationGeneration());
 
   const currentPage = currentPageIndex + 1;
   const pages = Array.from({ length: numPages }, (_, index) => index + 1);
@@ -293,11 +365,78 @@ export function useInteractivePdfFlipbook({
 
   useEffect(() => {
     writeStoredNarrationSettings({ selectedVoice, speechRate, speechVolume });
+    narrationPreparationGenerationRef.current = createNarrationPreparationGeneration();
   }, [selectedVoice, speechRate, speechVolume]);
+
+  useEffect(() => {
+    narrationPreparationGenerationRef.current = createNarrationPreparationGeneration();
+  }, [pdfPath, title]);
 
   const formatNarrationPercentage = useCallback((percentage: number) => {
     if (percentage === 0) return undefined;
     return `${percentage > 0 ? '+' : ''}${percentage}%`;
+  }, []);
+
+  const buildNarrationPreparationKey = useCallback(
+    (pageIndex: number, chunkText: string, voice: string, rate: string, volume: string) =>
+      JSON.stringify({ title, page: pageIndex, text: chunkText, voice, rate, volume }),
+    [title],
+  );
+
+  const registerNarrationPreparationRequest = useCallback(
+    (pageIndex: number, chunkText: string, voice: string, rate: string, volume: string) => {
+      const key = buildNarrationPreparationKey(pageIndex, chunkText, voice, rate, volume);
+      narrationPreparationGenerationRef.current.requests.set(key, {
+        bookKey: title,
+        voice,
+        rate,
+        volume,
+        chunkIndex: pageIndex,
+        chunkText,
+      });
+      return key;
+    },
+    [buildNarrationPreparationKey, title],
+  );
+
+  const prepareNarrationForeground = useCallback((key: string) => {
+    const generation = narrationPreparationGenerationRef.current;
+    const existingPreparation = generation.results.get(key);
+    if (existingPreparation) {
+      if (existingPreparation.pendingBackgroundPromotion) {
+        existingPreparation.pendingBackgroundPromotion = false;
+        void generation.coordinator.prepareForeground(key);
+      }
+      return existingPreparation.promise;
+    }
+
+    const preparation = generation.coordinator.prepareForeground(key).catch((error) => {
+      generation.results.delete(key);
+      throw error;
+    });
+    generation.results.set(key, { promise: preparation, pendingBackgroundPromotion: false });
+    return preparation;
+  }, []);
+
+  const prepareNarrationBackground = useCallback((key: string) => {
+    const generation = narrationPreparationGenerationRef.current;
+    const existingPreparation = generation.results.get(key);
+    if (existingPreparation) return existingPreparation.promise;
+
+    const entry = { promise: Promise.resolve(null as never) as Promise<NarrationPreparationResult>, pendingBackgroundPromotion: true };
+    const preparation = generation.coordinator.prepareBackground(key).then(
+      (result) => {
+        entry.pendingBackgroundPromotion = false;
+        return result;
+      },
+      (error) => {
+        generation.results.delete(key);
+        throw error;
+      },
+    );
+    entry.promise = preparation;
+    generation.results.set(key, entry);
+    return preparation;
   }, []);
 
   const isPageVisibleInCurrentSpread = useCallback((pageIndex: number) => {
@@ -343,146 +482,138 @@ export function useInteractivePdfFlipbook({
     setIsNarrationSynthesizing(false);
   }, []);
 
+  const destroyPdfDocumentCache = useCallback(
+    (cachedDocument: { path: string; promise: Promise<PdfDocumentProxy> } | null) => {
+      if (!cachedDocument) return;
+
+      if (pdfDocumentCacheRef.current === cachedDocument) {
+        pdfDocumentCacheRef.current = null;
+      }
+
+      void cachedDocument.promise
+        .then((pdf) => {
+          void pdf.destroy?.();
+        })
+        .catch(() => undefined);
+    },
+    [],
+  );
+
+  const getPdfDocument = useCallback(() => {
+    const cachedDocument = pdfDocumentCacheRef.current;
+    if (cachedDocument?.path === resolvedPdfPath) {
+      return cachedDocument.promise;
+    }
+
+    destroyPdfDocumentCache(cachedDocument);
+
+    const nextCachedDocument: { path: string; promise: Promise<PdfDocumentProxy> } = {
+      path: resolvedPdfPath,
+      promise: getDocument({ url: resolvedPdfPath }).promise.catch((error) => {
+        if (pdfDocumentCacheRef.current === nextCachedDocument) {
+          pdfDocumentCacheRef.current = null;
+        }
+        throw error;
+      }),
+    };
+
+    pdfDocumentCacheRef.current = nextCachedDocument;
+    pageNarrationTextPromisesRef.current.clear();
+    return nextCachedDocument.promise;
+  }, [destroyPdfDocumentCache, resolvedPdfPath]);
+
+  const getNarrationText = useCallback(
+    (pageIndex: number) => {
+      const cachedTextPromise = pageNarrationTextPromisesRef.current.get(pageIndex);
+      if (cachedTextPromise) {
+        return cachedTextPromise;
+      }
+
+      const textPromise = (async () => {
+        const pdf = await getPdfDocument();
+        const page = await pdf.getPage(pageIndex + 1);
+        const textContent = await page.getTextContent();
+        const pageText = textContentItemsToNarrationText(textContent.items as PdfTextContentItem[]);
+        return sanitizeNarrationText(pageText);
+      })().catch((error) => {
+        pageNarrationTextPromisesRef.current.delete(pageIndex);
+        throw error;
+      });
+
+      pageNarrationTextPromisesRef.current.set(pageIndex, textPromise);
+      return textPromise;
+    },
+    [getPdfDocument],
+  );
+
   const preloadNextNarrationPage = useCallback(
     (
       pageIndex: number,
       narrationOptions: { voice: string; rate?: string; volume?: string },
       narrationRequestId: number,
     ) => {
-      const nextPageIndex = pageIndex + NARRATION_PRELOAD_LOOKAHEAD;
-      const prepareEdgeTtsAudioCacheFile = window.audioCache?.prepareEdgeTtsAudioCacheFile;
-      const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
+      const lookaheadPageIndexes = [
+        pageIndex + NARRATION_PRELOAD_LOOKAHEAD,
+        pageIndex + NARRATION_PRELOAD_LOOKAHEAD + 1,
+      ];
+      const preloadRequestId = narrationPreloadRequestIdRef.current;
 
-      if (
-        nextPageIndex >= numPages ||
-        !prepareEdgeTtsAudioCacheFile ||
-        !readExtractedTextPage
-      ) {
-        return;
-      }
+      lookaheadPageIndexes.forEach((nextPageIndex) => {
+        if (nextPageIndex >= numPages) return;
 
-      const preloadRequestId = ++narrationPreloadRequestIdRef.current;
+        void (async () => {
+          try {
+            const chunkText = await getNarrationText(nextPageIndex);
+            if (
+              preloadRequestId !== narrationPreloadRequestIdRef.current ||
+              narrationRequestId !== narrationRequestIdRef.current
+            ) {
+              return;
+            }
 
-      void (async () => {
-        try {
-          const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
-          if (
-            preloadRequestId !== narrationPreloadRequestIdRef.current ||
-            narrationRequestId !== narrationRequestIdRef.current ||
-            !debugTextFilePath?.trim()
-          ) {
-            return;
+            if (!chunkText) {
+              return;
+            }
+
+            const key = registerNarrationPreparationRequest(
+              nextPageIndex,
+              chunkText,
+              narrationOptions.voice,
+              narrationOptions.rate || '',
+              narrationOptions.volume || '',
+            );
+            void prepareNarrationBackground(key).catch(() => undefined);
+          } catch {
+            // Preload is best-effort; current narration should continue unaffected.
           }
-
-          const fileText = await readExtractedTextPage(debugTextFilePath, nextPageIndex + 1);
-          if (
-            preloadRequestId !== narrationPreloadRequestIdRef.current ||
-            narrationRequestId !== narrationRequestIdRef.current
-          ) {
-            return;
-          }
-
-          const chunkText = sanitizeNarrationText(fileText);
-          if (!chunkText) {
-            return;
-          }
-
-          await prepareEdgeTtsAudioCacheFile({
-            bookKey: title,
-            voice: narrationOptions.voice,
-            rate: narrationOptions.rate || '',
-            volume: narrationOptions.volume || '',
-            chunkIndex: nextPageIndex,
-            chunkText,
-          });
-        } catch {
-          // Preload is best-effort; current narration should continue unaffected.
-        }
-      })();
+        })();
+      });
     },
-    [numPages, title],
+    [getNarrationText, numPages, prepareNarrationBackground, registerNarrationPreparationRequest],
   );
-
-  const extractTextFromPdf = useCallback(async () => {
-    if (!numPages) {
-      return [] as string[];
-    }
-
-    const pdf = await getDocument({ url: resolvedPdfPath }).promise;
-    const texts: string[] = [];
-
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const textContent = await page.getTextContent();
-      const pageText = textContentItemsToNarrationText(textContent.items as PdfTextContentItem[]);
-
-      texts.push(pageText);
-    }
-
-    return texts;
-  }, [numPages, resolvedPdfPath]);
 
   const toggleNarration = useCallback(() => {
     setNarrationError(null);
 
     if (isNarrationEnabled) {
+      narrationRequestIdRef.current += 1;
       narrationPlaybackOperationIdRef.current += 1;
+      narrationPreloadRequestIdRef.current += 1;
+      pendingNarrationPageIndexRef.current = null;
       setIsNarrationEnabled(false);
       isNarrationPausedRef.current = false;
       setIsNarrationPaused(false);
       return;
     }
 
-    void (async () => {
-      const operationId = ++narrationOperationIdRef.current;
-      setIsNarrationEnabled(true);
-      setIsNarrationLoading(true);
-
-      try {
-        const texts = pageNarrationTexts.length > 0 ? pageNarrationTexts : await extractTextFromPdf();
-        if (operationId !== narrationOperationIdRef.current) return;
-
-        const writeExtractedText = window.debugTools?.writeExtractedText;
-
-        if (!writeExtractedText) {
-          throw new Error('Không thể tạo file văn bản đã định dạng.');
-        }
-
-        if (pageNarrationTexts.length === 0) {
-          setPageNarrationTexts(texts);
-        }
-
-        const filePromise = writeExtractedText({
-          title,
-          pdfPath,
-          pages: texts,
-        });
-        extractedTextDebugFilePromiseRef.current = filePromise;
-        const filePath = await filePromise;
-        if (operationId !== narrationOperationIdRef.current) return;
-
-        if (!filePath?.trim()) {
-          throw new Error('Không thể tạo file văn bản đã định dạng.');
-        }
-
-        setIsNarrationSynthesizing(true);
-        setNarrationPageIndex(currentPageIndex);
-        setIsNarrationEnabled(true);
-      } catch (error) {
-        if (operationId !== narrationOperationIdRef.current) return;
-
-        extractedTextDebugFilePromiseRef.current = null;
-        setNarrationError(
-          error instanceof Error ? error.message : 'Không thể chuẩn bị file văn bản để đọc.',
-        );
-        setIsNarrationEnabled(false);
-      } finally {
-        if (operationId === narrationOperationIdRef.current) {
-          setIsNarrationLoading(false);
-        }
-      }
-    })();
-  }, [currentPageIndex, extractTextFromPdf, isNarrationEnabled, pageNarrationTexts, pdfPath, title]);
+    const startupTimingId = ++narrationStartupTimingOperationIdRef.current;
+    pendingNarrationStartupTimingIdRef.current = startupTimingId;
+    markNarrationPerformance(`narration-start:${startupTimingId}`);
+    setIsNarrationLoading(false);
+    setIsNarrationSynthesizing(true);
+    setNarrationPageIndex(currentPageIndex);
+    setIsNarrationEnabled(true);
+  }, [currentPageIndex, isNarrationEnabled]);
 
   const continuePendingNarrationTransition = useCallback(
     (targetPageIndex: number, requestId: number) => {
@@ -765,7 +896,8 @@ export function useInteractivePdfFlipbook({
     setCurrentPageIndex(0);
 
     return () => {
-      narrationOperationIdRef.current += 1;
+      narrationStartupTimingOperationIdRef.current += 1;
+      pendingNarrationStartupTimingIdRef.current = null;
     };
   }, [pdfPath, title]);
 
@@ -835,43 +967,17 @@ export function useInteractivePdfFlipbook({
   }, [activeProgressIdentity, emitProgress, isReadingProgressLoaded, numPages, restorableProgress]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    setPageNarrationTexts([]);
+    destroyPdfDocumentCache(pdfDocumentCacheRef.current);
+    pageNarrationTextPromisesRef.current.clear();
     setNarrationError(null);
-    setIsNarrationLoading(Boolean(numPages));
+    setIsNarrationLoading(false);
     setIsNarrationEnabled(false);
-    extractedTextDebugFilePromiseRef.current = null;
     stopNarration();
 
-    if (!numPages) {
-      setIsNarrationLoading(false);
-      return undefined;
-    }
-
-    void (async () => {
-      try {
-        const texts = await extractTextFromPdf();
-        if (!cancelled) {
-          setPageNarrationTexts(texts);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setNarrationError(
-            error instanceof Error ? error.message : 'Không thể chuẩn bị văn bản để đọc.',
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsNarrationLoading(false);
-        }
-      }
-    })();
-
     return () => {
-      cancelled = true;
+      destroyPdfDocumentCache(pdfDocumentCacheRef.current);
     };
-  }, [extractTextFromPdf, numPages, stopNarration]);
+  }, [destroyPdfDocumentCache, resolvedPdfPath, stopNarration]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1048,35 +1154,6 @@ export function useInteractivePdfFlipbook({
         isNarrationPausedRef.current = false;
         setIsNarrationPaused(false);
         setIsNarrationEnabled(false);
-        setIsNarrationLoading(true);
-        setPageNarrationTexts([]);
-
-        const debugTextFilePromise = extractedTextDebugFilePromiseRef.current;
-        extractedTextDebugFilePromiseRef.current = null;
-        const operationId = ++narrationOperationIdRef.current;
-
-        void (async () => {
-          try {
-            const debugTextFilePath = await debugTextFilePromise;
-            const emptyExtractedTextFile = window.debugTools?.emptyExtractedTextFile;
-
-            if (!debugTextFilePath?.trim() || !emptyExtractedTextFile) {
-              throw new Error('Không thể làm trống file văn bản đã định dạng.');
-            }
-
-            await emptyExtractedTextFile(debugTextFilePath);
-          } catch (error) {
-            if (operationId !== narrationOperationIdRef.current) return;
-
-            setNarrationError(
-              error instanceof Error ? error.message : 'Không thể làm trống file văn bản đã định dạng.',
-            );
-          } finally {
-            if (operationId === narrationOperationIdRef.current) {
-              setIsNarrationLoading(false);
-            }
-          }
-        })();
         return;
       }
 
@@ -1105,25 +1182,27 @@ export function useInteractivePdfFlipbook({
     audio.onerror = handleError;
 
     void (async () => {
+      const startupTimingId = pendingNarrationStartupTimingIdRef.current;
+      const foregroundTimingId = requestId;
+      const textStartMark = `narration-text-start:${foregroundTimingId}`;
+      const textEndMark = `narration-text-end:${foregroundTimingId}`;
+      const prepareStartMark = `narration-prepare-start:${foregroundTimingId}`;
+      const prepareEndMark = `narration-prepare-end:${foregroundTimingId}`;
+
       try {
-        const debugTextFilePath = await extractedTextDebugFilePromiseRef.current;
-        const readExtractedTextPage = window.debugTools?.readExtractedTextPage;
-
-        if (!debugTextFilePath?.trim() || !readExtractedTextPage) {
-          throw new Error('Không thể đọc file văn bản đã định dạng.');
-        }
-
-        const fileText = await readExtractedTextPage(debugTextFilePath, narrationPageIndex + 1);
-        const narrationText = sanitizeNarrationText(fileText);
+        markNarrationPerformance(textStartMark);
+        const narrationText = await getNarrationText(narrationPageIndex).finally(() => {
+          markNarrationPerformance(textEndMark);
+          measureNarrationPerformance(
+            `narration-text:${foregroundTimingId}`,
+            textStartMark,
+            textEndMark,
+          );
+        });
 
         if (!narrationText) {
           handleEnded();
           return;
-        }
-
-        const edgeTts = window.edgeTts;
-        if (!edgeTts) {
-          throw new Error('Edge TTS is unavailable.');
         }
 
         const narrationRate = formatNarrationPercentage(speechRate);
@@ -1134,59 +1213,70 @@ export function useInteractivePdfFlipbook({
           ...(narrationVolume ? { volume: narrationVolume } : {}),
         };
 
-        const audioCache = window.audioCache;
-        const cacheResult = audioCache
-          ? await audioCache.getOrCreateEdgeTtsAudioCacheFile({
-              bookKey: title,
-              voice: narrationOptions.voice,
-              rate: narrationOptions.rate || '',
-              volume: narrationOptions.volume || '',
-              chunkIndex: narrationPageIndex,
-              chunkText: narrationText,
-            })
-          : null;
-
-        if (cacheResult?.cacheHit && cacheResult.audioUrl) {
-          if (cancelled || requestId !== narrationRequestIdRef.current) {
-            return;
-          }
-
-          if (narrationBlobUrlRef.current) {
-            URL.revokeObjectURL(narrationBlobUrlRef.current);
-            narrationBlobUrlRef.current = null;
-          }
-
-          audio.src = cacheResult.audioUrl;
-          audio.currentTime = 0;
-          audio.load();
-          setIsNarrationPaused(false);
-          narrationPlaybackOperationIdRef.current += 1;
-          await audio.play();
-          preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
-          return;
-        }
-
         setIsNarrationSynthesizing(true);
-        const audioData = await edgeTts.synthesize(narrationText, narrationOptions);
+        const key = registerNarrationPreparationRequest(
+          narrationPageIndex,
+          narrationText,
+          narrationOptions.voice,
+          narrationOptions.rate || '',
+          narrationOptions.volume || '',
+        );
+        markNarrationPerformance(prepareStartMark);
+        const cacheResult = await prepareNarrationForeground(key);
+        markNarrationPerformance(prepareEndMark);
+        measureNarrationPerformance(
+          `${cacheResult.cacheHit ? 'narration-prepare-hit' : 'narration-prepare-miss'}:${foregroundTimingId}`,
+          prepareStartMark,
+          prepareEndMark,
+        );
+        measureNarrationDuration(
+          `narration-cache-lookup:${foregroundTimingId}`,
+          cacheResult.timings?.cacheLookupMs,
+        );
+        if (!cacheResult.cacheHit) {
+          measureNarrationDuration(
+            `narration-synthesis:${foregroundTimingId}`,
+            cacheResult.timings?.synthesisMs,
+          );
+        }
 
         if (cancelled || requestId !== narrationRequestIdRef.current) {
           return;
         }
 
-        const blobSource = normalizeNarrationAudioData(audioData);
-        const blob = new Blob([blobSource], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
+        if (!cacheResult.audioUrl) {
+          throw new Error('Prepared narration audio URL is unavailable.');
+        }
+
         if (narrationBlobUrlRef.current) {
           URL.revokeObjectURL(narrationBlobUrlRef.current);
+          narrationBlobUrlRef.current = null;
         }
-        narrationBlobUrlRef.current = url;
 
-        audio.src = url;
+        audio.src = cacheResult.audioUrl;
         audio.currentTime = 0;
         audio.load();
         setIsNarrationPaused(false);
         narrationPlaybackOperationIdRef.current += 1;
         await audio.play();
+        if (cancelled || requestId !== narrationRequestIdRef.current) {
+          return;
+        }
+
+        const playingMark = `narration-playing:${startupTimingId ?? foregroundTimingId}`;
+        markNarrationPerformance(playingMark);
+        if (
+          startupTimingId !== null &&
+          startupTimingId === pendingNarrationStartupTimingIdRef.current &&
+          startupTimingId === narrationStartupTimingOperationIdRef.current
+        ) {
+          measureNarrationPerformance(
+            `narration-startup:${startupTimingId}`,
+            `narration-start:${startupTimingId}`,
+            playingMark,
+          );
+          pendingNarrationStartupTimingIdRef.current = null;
+        }
         preloadNextNarrationPage(narrationPageIndex, narrationOptions, requestId);
       } catch (error) {
         if (cancelled || requestId !== narrationRequestIdRef.current) {
@@ -1218,12 +1308,15 @@ export function useInteractivePdfFlipbook({
     };
   }, [
     continuePendingNarrationTransition,
+    getNarrationText,
     isNarrationEnabled,
     isNarrationLoading,
     narrationError,
     narrationPageIndex,
     numPages,
     preloadNextNarrationPage,
+    prepareNarrationForeground,
+    registerNarrationPreparationRequest,
     selectedVoice,
     speechRate,
     speechVolume,
@@ -1302,7 +1395,6 @@ export function useInteractivePdfFlipbook({
     selectedVoice,
     speechRate,
     speechVolume,
-    pageNarrationTexts,
     narrationError,
     setNumPages,
     setPdfError,

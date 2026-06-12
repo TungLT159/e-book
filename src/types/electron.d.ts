@@ -14,6 +14,11 @@ export type ReadingProgressStore = {
   books: Record<string, ReadingProgressRecord>;
 };
 
+type NarrationPreparationTimings = {
+  cacheLookupMs: number;
+  synthesisMs: number;
+};
+
 declare global {
   interface Window {
     edgeTts?: {
@@ -34,14 +39,19 @@ declare global {
         chunkIndex: number;
         chunkText: string;
       }) => Promise<{ audioPath: string; audioUrl?: string; cacheHit: boolean }>;
-      prepareEdgeTtsAudioCacheFile?: (payload: {
+      prepareEdgeTtsAudioCacheFile: (payload: {
         bookKey: string;
         voice: string;
         rate: string;
         volume: string;
         chunkIndex: number;
         chunkText: string;
-      }) => Promise<{ audioPath: string; audioUrl?: string; cacheHit: boolean }>;
+      }) => Promise<{
+        audioPath: string;
+        audioUrl: string;
+        cacheHit: boolean;
+        timings?: NarrationPreparationTimings;
+      }>;
     };
     readingProgress?: {
       getAll: () => Promise<ReadingProgressStore>;

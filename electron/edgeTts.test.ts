@@ -328,6 +328,10 @@ describe('edge TTS python bridge', () => {
       audioUrl:
         'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: true,
+      timings: {
+        cacheLookupMs: expect.any(Number),
+        synthesisMs: 0,
+      },
     });
     expect(mocks.spawn).not.toHaveBeenCalled();
     expect(mocks.mkdir).not.toHaveBeenCalled();
@@ -365,7 +369,14 @@ describe('edge TTS python bridge', () => {
       audioUrl:
         'file:///C:/Temp/narration-audio/demo-book/vi-VN-HoaiMyNeural/__default__/__default__/chunk-0-abcdef1234567890abcdef1234567890.mp3',
       cacheHit: false,
+      timings: {
+        cacheLookupMs: expect.any(Number),
+        synthesisMs: expect.any(Number),
+      },
     });
+    const preparedResult = await cachePromise;
+    expect(preparedResult.timings.cacheLookupMs).toBeGreaterThanOrEqual(0);
+    expect(preparedResult.timings.synthesisMs).toBeGreaterThanOrEqual(0);
     expect(mocks.mkdir).toHaveBeenCalledWith(
       'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__',
       { recursive: true },
@@ -408,6 +419,198 @@ describe('edge TTS python bridge', () => {
       'C:\\Temp\\narration-audio\\demo-book\\vi-VN-HoaiMyNeural\\__default__\\__default__\\chunk-0-abcdef1234567890abcdef1234567890.mp3.uuid-1234.tmp',
       { force: true },
     );
+  });
+
+  it('shares synthesis and publishing for overlapping requests to the same cache path', async () => {
+    const child = createChildProcess();
+    const lookup = vi.fn().mockResolvedValue({ cacheHit: false });
+    mocks.spawn.mockReturnValue(child);
+
+    const { prepareEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+    const options = {
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    };
+
+    const first = prepareEdgeTtsAudioCacheFile(options);
+    const second = prepareEdgeTtsAudioCacheFile(options);
+
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    child.emit('close', 0);
+
+    const results = await Promise.all([first, second]);
+    expect(results).toEqual([
+      expect.objectContaining({ cacheHit: false, timings: expect.any(Object) }),
+      expect.objectContaining({ cacheHit: false, timings: expect.any(Object) }),
+    ]);
+    expect(results[0].timings.synthesisMs).toBe(results[1].timings.synthesisMs);
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1);
+    expect(mocks.rename).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares preparation when distinct raw inputs canonicalize to the same cache path', async () => {
+    const firstChild = createChildProcess();
+    const duplicateChild = createChildProcess();
+    const lookup = vi.fn().mockResolvedValue({ cacheHit: false });
+    mocks.spawn.mockReturnValueOnce(firstChild).mockReturnValueOnce(duplicateChild);
+
+    const { prepareEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+    const commonOptions = {
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    };
+    const first = prepareEdgeTtsAudioCacheFile({ ...commonOptions, rate: undefined });
+    const second = prepareEdgeTtsAudioCacheFile({ ...commonOptions, rate: '' });
+
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    firstChild.emit('close', 0);
+    if (mocks.spawn.mock.calls.length === 2) {
+      duplicateChild.emit('close', 0);
+    }
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.audioPath).toBe(secondResult.audioPath);
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1);
+    expect(mocks.rename).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares a completed publication when an already-started stale lookup resolves later', async () => {
+    const firstChild = createChildProcess();
+    const duplicateChild = createChildProcess();
+    let resolveFirstLookup!: (value: { cacheHit: false }) => void;
+    let resolveSecondLookup!: (value: { cacheHit: false }) => void;
+    const firstLookup = new Promise<{ cacheHit: false }>((resolve) => {
+      resolveFirstLookup = resolve;
+    });
+    const secondLookup = new Promise<{ cacheHit: false }>((resolve) => {
+      resolveSecondLookup = resolve;
+    });
+    const lookup = vi.fn()
+      .mockReturnValueOnce(firstLookup)
+      .mockReturnValueOnce(secondLookup);
+    mocks.spawn.mockReturnValueOnce(firstChild).mockReturnValueOnce(duplicateChild);
+
+    const { prepareEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+    const options = {
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    };
+
+    const first = prepareEdgeTtsAudioCacheFile(options);
+    const second = prepareEdgeTtsAudioCacheFile(options);
+    expect(lookup).toHaveBeenCalledTimes(2);
+
+    resolveFirstLookup({ cacheHit: false });
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    firstChild.emit('close', 0);
+    await expect(first).resolves.toEqual(expect.objectContaining({ cacheHit: false }));
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1);
+
+    resolveSecondLookup({ cacheHit: false });
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length < 2; attempt += 1) {
+      await Promise.resolve();
+    }
+    if (mocks.spawn.mock.calls.length === 2) {
+      duplicateChild.emit('close', 0);
+    }
+    await expect(second).resolves.toEqual(expect.objectContaining({ cacheHit: false }));
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1);
+    expect(mocks.rename).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes a failed in-flight request so a later call can retry', async () => {
+    const failedChild = createChildProcess();
+    const retryChild = createChildProcess();
+    const lookup = vi.fn().mockResolvedValue({ cacheHit: false });
+    mocks.spawn.mockReturnValueOnce(failedChild).mockReturnValueOnce(retryChild);
+    mocks.rename.mockRejectedValueOnce(new Error('rename failed')).mockResolvedValueOnce(undefined);
+
+    const { prepareEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+    const options = {
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      volume: '+10%',
+      chunkIndex: 0,
+      chunkText: 'Biểu',
+      lookup,
+    };
+
+    const failed = prepareEdgeTtsAudioCacheFile(options);
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    failedChild.emit('close', 0);
+    await expect(failed).rejects.toThrow('rename failed');
+
+    const retry = prepareEdgeTtsAudioCacheFile(options);
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length < 2; attempt += 1) {
+      await Promise.resolve();
+    }
+    retryChild.emit('close', 0);
+
+    await expect(retry).resolves.toEqual(expect.objectContaining({ cacheHit: false }));
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(mocks.spawn).toHaveBeenCalledTimes(2);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not deduplicate concurrent requests for different cache paths', async () => {
+    const firstChild = createChildProcess();
+    const secondChild = createChildProcess();
+    const lookup = vi.fn().mockResolvedValue({ cacheHit: false });
+    mocks.spawn.mockReturnValueOnce(firstChild).mockReturnValueOnce(secondChild);
+
+    const { prepareEdgeTtsAudioCacheFile } = await import('./edgeTts.js');
+    const commonOptions = {
+      userDataPath: 'C:\\Temp',
+      bookKey: 'demo-book',
+      voice: 'vi-VN-HoaiMyNeural',
+      rate: '',
+      chunkText: 'Biểu',
+      lookup,
+    };
+    const first = prepareEdgeTtsAudioCacheFile({ ...commonOptions, chunkIndex: 0 });
+    const second = prepareEdgeTtsAudioCacheFile({ ...commonOptions, chunkIndex: 1 });
+
+    for (let attempt = 0; attempt < 10 && mocks.spawn.mock.calls.length < 2; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(mocks.spawn).toHaveBeenCalledTimes(2);
+    firstChild.emit('close', 0);
+    secondChild.emit('close', 0);
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.audioPath).not.toBe(secondResult.audioPath);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(2);
   });
 
   it('produces the same cache path for the same inputs', async () => {

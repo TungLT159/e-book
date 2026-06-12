@@ -4,12 +4,19 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { performance } from 'node:perf_hooks';
 
 export const EDGE_TTS_MODULE = 'edge_tts';
 export const AUDIO_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_VIETNAMESE_VOICE = 'vi-VN-HoaiMyNeural';
 const PYTHON_COMMAND = process.env.EDGE_TTS_PYTHON || process.env.PYTHON || 'python';
 const MAX_SYNTHESIS_ATTEMPTS = 6;
+const inFlightAudioPreparations = new Map();
+
+function elapsedMilliseconds(startTime) {
+  const duration = performance.now() - startTime;
+  return Number.isFinite(duration) && duration >= 0 ? duration : 0;
+}
 
 const LIST_VOICES_SCRIPT = `
 import asyncio
@@ -177,31 +184,12 @@ export async function getOrCreateEdgeTtsAudioCacheFile({
   return buildAudioCacheResult(audioPath, false);
 }
 
-export async function prepareEdgeTtsAudioCacheFile({
-  userDataPath,
-  bookKey,
+async function synthesizeAndPublishEdgeTtsAudioCacheFile(cacheResult, {
   voice,
   rate,
   volume,
-  chunkIndex,
   chunkText,
-  lookup,
 }) {
-  const cacheResult = await getOrCreateEdgeTtsAudioCacheFile({
-    userDataPath,
-    bookKey,
-    voice,
-    rate,
-    volume,
-    chunkIndex,
-    chunkText,
-    lookup,
-  });
-
-  if (cacheResult.cacheHit) {
-    return cacheResult;
-  }
-
   const audio = await synthesizeEdgeTts(chunkText, { voice, rate, volume });
   if (audio.length === 0) {
     return cacheResult;
@@ -219,6 +207,56 @@ export async function prepareEdgeTtsAudioCacheFile({
   }
 
   return cacheResult;
+}
+
+export async function prepareEdgeTtsAudioCacheFile(options) {
+  const preparationKey = buildEdgeTtsCachePath(options);
+  let coordination = inFlightAudioPreparations.get(preparationKey);
+
+  if (!coordination) {
+    coordination = { activeRequests: 0, preparation: undefined };
+    inFlightAudioPreparations.set(preparationKey, coordination);
+  }
+
+  coordination.activeRequests += 1;
+
+  try {
+    const cacheLookupStart = performance.now();
+    const cacheResult = await getOrCreateEdgeTtsAudioCacheFile(options);
+    const cacheLookupMs = elapsedMilliseconds(cacheLookupStart);
+
+    if (cacheResult.cacheHit) {
+      return {
+        ...cacheResult,
+        timings: { cacheLookupMs, synthesisMs: 0 },
+      };
+    }
+
+    if (!coordination.preparation) {
+      coordination.preparation = (async () => {
+        const synthesisStart = performance.now();
+        const result = await synthesizeAndPublishEdgeTtsAudioCacheFile(cacheResult, options);
+        return {
+          result,
+          synthesisMs: elapsedMilliseconds(synthesisStart),
+        };
+      })();
+    }
+
+    const preparation = await coordination.preparation;
+    return {
+      ...preparation.result,
+      timings: { cacheLookupMs, synthesisMs: preparation.synthesisMs },
+    };
+  } finally {
+    coordination.activeRequests -= 1;
+    if (
+      coordination.activeRequests === 0
+      && inFlightAudioPreparations.get(preparationKey) === coordination
+    ) {
+      inFlightAudioPreparations.delete(preparationKey);
+    }
+  }
 }
 
 function runPythonScript(script, { args = [], input = '' } = {}) {
