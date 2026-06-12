@@ -386,9 +386,9 @@ export function useInteractivePdfFlipbook({
   }, []);
 
   const setSleepTimerMinutes = useCallback((minutes: number | null) => {
+    if (minutes !== null && ![5, 10, 15, 30, 45, 60].includes(minutes)) return;
     clearSleepTimer();
     if (minutes === null) return;
-    if (![5, 10, 15, 30, 45, 60].includes(minutes)) return;
 
     const durationMs = minutes * 60 * 1000;
     const deadline = Date.now() + durationMs;

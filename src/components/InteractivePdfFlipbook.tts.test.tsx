@@ -1,9 +1,10 @@
 /// <reference types="node" />
 
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InteractivePdfFlipbook } from './InteractivePdfFlipbook';
+import { useInteractivePdfFlipbook } from './hooks/useInteractivePdfFlipbook';
 import { sanitizeNarrationText } from '../utils/narration';
 
 const pdfJsMock = vi.hoisted(() => {
@@ -837,6 +838,26 @@ describe('InteractivePdfFlipbook narration', () => {
     selectSleepTimer(/^tắt hẹn giờ$/i);
     expect(screen.queryByLabelText('Thời gian đọc còn lại')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+  });
+
+  it('preserves an active sleep timer when the setter receives an unsupported duration', async () => {
+    const { result } = renderHook(() =>
+      useInteractivePdfFlipbook({ title: 'Demo book', pdfPath: '/books/demo.pdf' }),
+    );
+    await waitFor(() => expect(result.current.isVoiceLoading).toBe(false));
+    vi.useFakeTimers();
+
+    act(() => result.current.setSleepTimerMinutes(30));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.sleepTimerMinutes).toBe(30);
+    expect(result.current.sleepTimerRemainingSeconds).toBe(29 * 60 + 59);
+
+    act(() => result.current.setSleepTimerMinutes(20));
+    expect(result.current.sleepTimerMinutes).toBe(30);
+    expect(result.current.sleepTimerRemainingSeconds).toBe(29 * 60 + 59);
+
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.sleepTimerRemainingSeconds).toBe(29 * 60 + 58);
   });
 
   it('passes narration volume from persisted settings without a neutral speech rate', async () => {
