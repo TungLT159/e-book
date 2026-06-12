@@ -894,9 +894,25 @@ label.interactive-reader__tts-field > span {
   bottom: 22px;
   transform: translateX(-50%);
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
   width: min(520px, calc(100% - 112px));
   pointer-events: none;
+}
+
+.interactive-reader__sleep-timer {
+  flex: none;
+  min-width: 5.25rem;
+  padding: 8px 12px;
+  border: var(--doodle-border-thin);
+  border-radius: var(--doodle-radius-sm);
+  background: var(--color-surface);
+  color: var(--color-focus);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: center;
 }
 
 .interactive-reader__auto-read-loading,
@@ -1613,6 +1629,11 @@ label.interactive-reader__tts-field > span {
   .interactive-reader__auto-read-bar {
     bottom: 14px;
     width: min(100%, calc(100% - 72px));
+  }
+  .interactive-reader__sleep-timer {
+    max-width: 100%;
+    padding: 6px 10px;
+    box-sizing: border-box;
   }
   .interactive-reader__auto-read-controls {
     gap: 6px;
