@@ -763,6 +763,37 @@ describe('InteractivePdfFlipbook narration', () => {
     await waitFor(() => expectPreparedNarration('Trang mộtnội dung mở đầu', { rate: '+25%' }));
   });
 
+  it('offers narration sleep timer presets only while narration is enabled', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    expect(await screen.findByText('PDF page 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+
+    const sleepTimerTrigger = screen.getByRole('button', { name: /hẹn giờ dừng đọc/i });
+    expect(sleepTimerTrigger).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+
+    await waitFor(() => expect(sleepTimerTrigger).toBeEnabled());
+    fireEvent.click(sleepTimerTrigger);
+
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Tắt hẹn giờ',
+      '5 phút',
+      '10 phút',
+      '15 phút',
+      '30 phút',
+      '45 phút',
+      '60 phút',
+    ]);
+
+    await waitFor(() => expectPreparedNarration('Trang mộtnội dung mở đầu'));
+    fireEvent.click(screen.getByRole('button', { name: /^dừng đọc$/i }));
+    await waitFor(() => expect(sleepTimerTrigger).toBeDisabled());
+  });
+
   it('passes narration volume from persisted settings without a neutral speech rate', async () => {
     window.localStorage.setItem(
       'interactivePdfFlipbook:narrationSettings:v1',

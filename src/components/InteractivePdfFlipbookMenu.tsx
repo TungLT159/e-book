@@ -16,6 +16,16 @@ import {
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { CustomSelect, type CustomSelectOption } from "./CustomSelect";
 
+const SLEEP_TIMER_OPTIONS: CustomSelectOption[] = [
+  { value: "off", label: "Tắt hẹn giờ" },
+  { value: "5", label: "5 phút" },
+  { value: "10", label: "10 phút" },
+  { value: "15", label: "15 phút" },
+  { value: "30", label: "30 phút" },
+  { value: "45", label: "45 phút" },
+  { value: "60", label: "60 phút" },
+];
+
 type InteractivePdfFlipbookMenuProps = {
   title: string;
   onBackToLibrary?: () => void;
@@ -41,6 +51,8 @@ type InteractivePdfFlipbookMenuProps = {
   setSpeechRate: Dispatch<SetStateAction<number>>;
   speechVolume: number;
   setSpeechVolume: Dispatch<SetStateAction<number>>;
+  sleepTimerMinutes: number | null;
+  setSleepTimerMinutes: (minutes: number | null) => void;
   isNarrationEnabled: boolean;
   isNarrationLoading: boolean;
   isNarrationSynthesizing: boolean;
@@ -77,6 +89,8 @@ export function InteractivePdfFlipbookMenu({
   setSpeechRate,
   speechVolume,
   setSpeechVolume,
+  sleepTimerMinutes,
+  setSleepTimerMinutes,
   isNarrationEnabled,
   isNarrationLoading,
   isNarrationSynthesizing,
@@ -303,6 +317,17 @@ export function InteractivePdfFlipbookMenu({
                               : `${speechVolume > 0 ? "+" : ""}${speechVolume}%`}
                           </output>
                         </label>
+
+                        <CustomSelect
+                          label="Hẹn giờ dừng đọc"
+                          value={sleepTimerMinutes === null ? "off" : String(sleepTimerMinutes)}
+                          options={SLEEP_TIMER_OPTIONS}
+                          onChange={(value) =>
+                            setSleepTimerMinutes(value === "off" ? null : Number(value))
+                          }
+                          disabled={!isNarrationEnabled}
+                          className="interactive-reader__tts-field"
+                        />
                       </div>
                     )}
                   </div>
