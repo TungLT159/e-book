@@ -1342,7 +1342,6 @@ export function useInteractivePdfFlipbook({
         narrationPagePauseTimeoutRef.current = null;
       }
       cleanupAudio();
-      setIsNarrationSynthesizing(false);
     };
   }, [
     continuePendingNarrationTransition,
