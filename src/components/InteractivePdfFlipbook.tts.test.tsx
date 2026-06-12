@@ -1007,19 +1007,26 @@ describe('InteractivePdfFlipbook narration', () => {
     fireEvent.click(screen.getByRole('button', { name: /^dừng đọc$/i }));
     expect(screen.queryByLabelText('Thời gian đọc còn lại')).not.toBeInTheDocument();
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
-    });
-
     fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(play).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    pause.mockClear();
+    load.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+      await Promise.resolve();
+    });
 
     expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^dừng đọc$/i })).toBeInTheDocument();
+    expect(pause).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
   });
 
   it('passes narration volume from persisted settings without a neutral speech rate', async () => {
