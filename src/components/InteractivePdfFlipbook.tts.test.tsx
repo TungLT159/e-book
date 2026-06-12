@@ -922,6 +922,106 @@ describe('InteractivePdfFlipbook narration', () => {
     expect(screen.getByRole('button', { name: /đọc tự động/i })).toBeInTheDocument();
   });
 
+  it('ignores a stale foreground cache result that resolves after the sleep timer expires', async () => {
+    let resolveForeground!: (result: AudioCacheResult) => void;
+    prepareEdgeTtsAudioCacheFile.mockImplementationOnce((payload: AudioCachePayload) => new Promise((resolve) => {
+      resolveForeground = resolve;
+      expect(payload.chunkText).toBe('Trang mộtnội dung mở đầu');
+    }));
+
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await waitFor(() => expect(prepareEdgeTtsAudioCacheFile).toHaveBeenCalledTimes(1));
+    expect(play).not.toHaveBeenCalled();
+
+    vi.useFakeTimers();
+    selectSleepTimer(/^5 phút$/i);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    });
+    expect(screen.queryByRole('button', { name: /^dừng đọc$/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveForeground({
+        audioPath: 'C:\\Temp\\flipbook-react-electron\\audio-cache\\late-page-1.mp3',
+        audioUrl: 'file:///C:/Temp/flipbook-react-electron/audio-cache/late-page-1.mp3',
+        cacheHit: false,
+      });
+      await Promise.resolve();
+    });
+
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /đọc tự động/i })).toBeInTheDocument();
+  });
+
+  it('keeps independent auto-flip enabled after the sleep timer stops narration', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/multi-page-demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    expect(await screen.findByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    selectSleepTimer(/^5 phút$/i);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 100);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /tự lật trang/i }));
+    expect(screen.getByRole('button', { name: /dừng tự lật/i })).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    expect(screen.queryByRole('button', { name: /^dừng đọc$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tạm dừng đọc/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /dừng tự lật/i })).toBeInTheDocument();
+    expect(screen.getByText((_content, element) => element?.textContent === 'Trang 1 / 6')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(3200);
+    });
+    await act(async () => undefined);
+
+    expect(flipNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears an old sleep timer when narration is manually stopped', async () => {
+    render(<InteractivePdfFlipbook title="Demo book" pdfPath="/books/demo.pdf" />);
+
+    await screen.findByText('PDF page 1');
+    fireEvent.click(screen.getByRole('button', { name: /mở menu điều khiển/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cài đặt giọng đọc/i }));
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    vi.useFakeTimers();
+    selectSleepTimer(/^5 phút$/i);
+    fireEvent.click(screen.getByRole('button', { name: /^dừng đọc$/i }));
+    expect(screen.queryByLabelText('Thời gian đọc còn lại')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /đọc tự động/i }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+
+    expect(screen.getByRole('button', { name: /tạm dừng đọc/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^dừng đọc$/i })).toBeInTheDocument();
+  });
+
   it('passes narration volume from persisted settings without a neutral speech rate', async () => {
     window.localStorage.setItem(
       'interactivePdfFlipbook:narrationSettings:v1',
